@@ -1,6 +1,7 @@
 import numpy as np 
 import tensorflow as tf
 from architectures.utils import *
+import itertools
 
 class FullyConnectedNetwork:
 	def __init__(self, sess, x, out_shape, name, network_param):

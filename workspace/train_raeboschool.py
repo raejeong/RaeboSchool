@@ -1,3 +1,4 @@
+from OpenGL import GLU
 import gym
 import roboschool
 import numpy as np

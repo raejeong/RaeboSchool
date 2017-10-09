@@ -1,11 +1,12 @@
 import numpy as np 
 import tensorflow as tf
+import itertools
 
 def dense(x, shape, name):
     """
     Dense (fully connected) layer
     """
-    w = tf.get_variable(name + "/w", [x.shape[1], shape], initializer=tf.truncated_normal_initializer(stddev=0.1))
+    w = tf.get_variable(name + "/w", [x.get_shape()[1], shape], initializer=tf.truncated_normal_initializer(stddev=0.1))
     b = tf.get_variable(name + "/b", [shape], initializer=tf.zeros_initializer())
     return tf.matmul(x, w) + b
 
