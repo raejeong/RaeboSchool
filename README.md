@@ -20,6 +20,9 @@ Clone this repo
 
 # Run
 
+- X server, lazy way
+```xhost +local:root ```
+
 - build docker image
 ```sudo docker build . -t raeboschool ```
 

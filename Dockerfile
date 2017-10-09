@@ -107,6 +107,11 @@ RUN make install
 WORKDIR /home/user/roboschool/
 ENV ROBOSCHOOL_PATH /home/user/roboschool
 RUN pip3 install -e $ROBOSCHOOL_PATH
+RUN chown -R user /home/user
+
+RUN apt install -y gedit
+RUN pip3 install --upgrade scipy
 
 USER user
 WORKDIR /home/user/
+RUN echo 'export PYTHONPATH=/home/user/workspace:${PYTHONPATH}' >> ~/.bashrc
