@@ -9,20 +9,22 @@ class A2C:
   def __init__(self,
                env,
                sess,
-               policy_network_param=[32,16],
-               value_network_param=[32,16],
-               iterations=300,
-               min_batch_size=1000,
-               lr=1e-3,
+               policy_network_param=[32,32],
+               value_network_param=[32,32],
+               iterations=5000,
+               min_batch_size=2500,
+               lr=1e-2,
                lr_schedule='linear',
-               gamma=0.99):
+               gamma=0.99,
+               animate=True):
 
     self.sess = sess
     self.env = env
-    self.learning_rate_scheduler = Scheduler(v=lr, nvalues=iterations, schedule=lr_schedule)
+    self.learning_rate_scheduler = Scheduler(v=lr, nvalues=iterations*2, schedule=lr_schedule)
     self.iterations = iterations
     self.min_batch_size = min_batch_size
     self.gamma = gamma
+    self.animate = animate
     #
     # getting the shape of observation space and action space of the environment
     self.observation_shape = self.env.observation_space.shape[0]
@@ -48,6 +50,10 @@ class A2C:
       #
       self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
       #
+      #
+      self.mean_policy_old = tf.placeholder(tf.float32, name="mean_policy_old")
+      self.stddev_policy_old = tf.placeholder(tf.float32, name="stddev_policy_old")
+      #
       ##### Networks #####
       #
       # policy network, outputs the mean and the stddev (needs to go through softplus) for the action
@@ -67,6 +73,12 @@ class A2C:
       # gaussian distribution is built with mean and stddev from the policy network
       self.gaussian_policy_distribution = tf.contrib.distributions.Normal(self.mean_policy, self.stddev_policy)
       #
+      # gaussian distribution is built with mean and stddev from the policy network
+      self.gaussian_policy_distribution_old = tf.contrib.distributions.Normal(self.mean_policy_old, self.stddev_policy_old)
+      #
+      # gaussian distribution is built with mean and stddev from the policy network
+      self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.gaussian_policy_distribution, self.gaussian_policy_distribution_old))
+      #
       # action sampled from the gaussian distribution of the policy network
       self.action_sampled = self.gaussian_policy_distribution._sample_n(1)
       #
@@ -76,14 +88,14 @@ class A2C:
       ##### Loss #####
       #
       # loss for the policy network and value network
-      self.policy_network_loss = tf.multiply(-self.gaussian_policy_distribution.log_prob(self.actions), self.advantages)
+      self.policy_network_loss = tf.multiply(-self.gaussian_policy_distribution.log_prob(self.actions), self.advantages) - 1e-1*self.gaussian_policy_distribution.entropy()
       self.value_network_loss = tf.squared_difference(self.value_network.out, self.target_values)
       #
       ##### Optimization #####
       #
       # optimizer for the policy network and value network
       self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-      self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+      self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate*10)
       #
       # training operation for the policy network and value network
       self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
@@ -98,9 +110,13 @@ class A2C:
     return self.sess.run(self.value_network.out, {self.observations: observations})
 
 
-  def train(self):
+  def train(self, saver=None, save_dir=None):
     total_timesteps = 0
-
+    trajectory_rewards = []
+    kl = 0
+    best_average_reward = -np.inf
+    observations_means = []
+    observations_stddevs = [] 
     for iteration in range(self.iterations):
       batch_size = 0
       trajectories, returns, advantages = [], [], []
@@ -109,13 +125,18 @@ class A2C:
         observations, actions, rewards = [], [], []
         done = False
         while not done:
-          if len(trajectories)==0 and (iteration%10==0):
+          if len(trajectories)==0 and (iteration%10==0) and self.animate:
             self.env.render()
           observations.append(observation)
           action = self.compute_action(observation)
+          if not isinstance(action, (list, tuple, np.ndarray)):
+            action = np.array([action])
           observation, reward, done, _ = self.env.step(action)
           rewards.append(reward)
           actions.append(action)
+        if len(trajectory_rewards) > 100:
+          trajectory_rewards.pop(0)
+        trajectory_rewards.append(np.sum(rewards))
         batch_size += len(rewards)
         trajectory = {"observations":np.array(observations), "actions":np.array(actions), "rewards":np.array(rewards)}
         trajectories.append(trajectory)
@@ -126,9 +147,26 @@ class A2C:
         advantages.append(advantage)
       total_timesteps += batch_size
       observations_batch = np.concatenate([trajectory["observations"] for trajectory in trajectories])
+      observations_mean = observations_batch.mean()
+      observations_stddev = observations_batch.std()
+      observations_means.append(observations_mean)
+      observations_stddevs.append(observations_stddev)
+      # observations_batch = (observations_batch -  observations_mean)/ (observations_stddev + 1e-8)
       actions_batch = np.concatenate([trajectory["actions"] for trajectory in trajectories])
       advantages_batch = np.array(list(itertools.chain.from_iterable(advantages))).flatten().reshape([-1,1])
+      advantages_batch = (advantages_batch - advantages_batch.mean()) / (advantages_batch.std() + 1e-8)
       returns_batch = np.array(list(itertools.chain.from_iterable(returns))).reshape([-1,1])
       learning_rate = self.learning_rate_scheduler.value()
-      policy_network_loss, value_network_loss, _, _ = self.sess.run([self.policy_network_loss, self.value_network_loss, self.train_policy_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.target_values:returns_batch, self.learning_rate:learning_rate})
-      print("iteration " + str(iteration) + ": Average Batch Return: %.2f" % np.mean(returns_batch))
+      if kl > 2e-3 * 10: 
+        learning_rate /= (kl/2.e-3)
+      elif kl < 2e-3 / 2: 
+        learning_rate *= 10
+      policy_network_loss, value_network_loss, mean_policy_old, stddev_policy_old, _, _ = self.sess.run([self.policy_network_loss, self.value_network_loss, self.mean_policy, self.stddev_policy, self.train_policy_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.target_values:returns_batch, self.learning_rate:learning_rate})
+      print(policy_network_loss)
+      kl = self.sess.run([self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.mean_policy_old:mean_policy_old, self.stddev_policy_old:stddev_policy_old})[0]
+      average_reward = np.mean(trajectory_rewards[-100:])
+      if average_reward > best_average_reward:
+        best_average_reward = average_reward
+        saver.save(self.sess, save_dir)
+
+      print("timestep "+str(total_timesteps)+", iteration " + str(iteration) + ", best average reward %.2f" % best_average_reward+", average reward %.2f" % average_reward+", kl %.5f"%kl)

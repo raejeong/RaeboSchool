@@ -10,7 +10,8 @@ class FullyConnectedNetwork:
 			for i in itertools.count():
 				if i == len(network_param):
 					break
+				# out = tf.contrib.layers.layer_norm(out)
 				out = lrelu(dense(out, network_param[i], "fc"+str(i)))
-			out = dense(out, out_shape, "out")
+			out = dense(out, out_shape, "out", initializer=tf.random_uniform_initializer(-0.1,0.1))
 
 		self.out = out
