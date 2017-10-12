@@ -70,7 +70,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
 if __name__ == "__main__":
 	args = getInputArgs()
 	env_setting = dict(id="-0",
-					   env_name='RoboschoolInvertedDoublePendulum-v1',
+					   env_name='RoboschoolInvertedPendulum-v1',
 					   seed=0,
 					   network_type='fully_connected_network',
 			           network_size='small',
@@ -78,7 +78,7 @@ if __name__ == "__main__":
 		               min_batch_size=500,
 		               lr=5e-3,
 		               lr_schedule='constant',
-		               gamma=0.99,
+		               gamma=0.97,
 		               animate=False,
 		               record=False)
 	
