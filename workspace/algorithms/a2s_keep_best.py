@@ -22,10 +22,10 @@ class Agent:
                animate=True,
                logs_path="/home/user/workspace/logs/",
                number_of_suggestions=8,
-               mini_batch_size=32,
-               mini_iterations=200,
-               episode_increase=10,
-               min_episodes=10):
+               mini_batch_size=50,
+               mini_iterations=2300,
+               episode_increase=20,
+               min_episodes=80):
     #
     # Tensorflow Session
     self.sess = sess
@@ -75,7 +75,6 @@ class Agent:
       # placeholder for the r + gamma*next_value
       self.returns = tf.placeholder(tf.float32, shape=[None, 1], name="returns")
       self.average_reward = tf.placeholder(tf.float32, name="average_reward")
-      tf.summary.scalar('"average_reward', self.average_reward)
       #
       ##### Networks #####
       #
@@ -178,6 +177,8 @@ class Agent:
       self.backup = tf.group(*self.backup)
 
       self.summary = tf.summary.merge_all()
+      self.reward_summary = tf.summary.scalar("average_reward", self.average_reward)
+
     #
     # initialize all tf variables
     self.writer = tf.summary.FileWriter(logs_path, sess.graph)
@@ -275,6 +276,8 @@ class Agent:
         #
         # get sum of reward for this episode
         trajectory_rewards.append(np.sum(rewards))
+        reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.mean(trajectory_rewards[-100:])})[0]
+        self.writer.add_summary(reward_summary, total_timesteps)
         #
         # add timesteps of this episode to batch_size
         batch_size += len(rewards)
@@ -320,11 +323,13 @@ class Agent:
         _ = self.sess.run([self.backup,{}])        
       else:
         print("restored!")
-        self.min_episodes *= 2
+        self.min_episodes += self.episode_increase
         _ = self.sess.run([self.restore],{})
       #
       # mini updates
-      for i in range(self.mini_iterations):
+      print(int(batch_size/self.mini_batch_size))
+      mini_iterations = int(np.max([self.mini_iterations, batch_size/self.mini_batch_size]))
+      for i in range(mini_iterations):
         mini_batch_idx = np.random.choice(batch_size, self.mini_batch_size)
         observations_mini_batch = observations_batch[mini_batch_idx,:]
         actions_mini_batch = actions_batch[mini_batch_idx,:]
