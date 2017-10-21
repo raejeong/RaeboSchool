@@ -76,7 +76,7 @@ if __name__ == "__main__":
 			           network_size='small',
 			           iterations=30,
 		               min_batch_size=2000,
-		               lr=3e-3,
+		               lr=8e-3,
 		               lr_schedule='linear',
 		               gamma=0.99,
 		               animate=False,
