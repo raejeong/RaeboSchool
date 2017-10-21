@@ -21,10 +21,10 @@ class Agent:
                gamma=0.99,
                animate=True,
                logs_path="/home/user/workspace/logs/",
-               number_of_suggestions=4,
+               number_of_suggestions=6,
                mini_batch_size=32,
-               mini_iterations=250,
-               episode_increase=20,
+               mini_iterations=300,
+               episode_increase=40,
                min_episodes=60):
     #
     # Tensorflow Session
@@ -271,16 +271,17 @@ class Agent:
         ##### Data Appending #####
         #
         # keeping trajectory_rewards as fifo of 100
-        if len(trajectory_rewards) > 100:
+        if len(trajectory_rewards) > 2000:
           trajectory_rewards.pop(0)
         #
         # get sum of reward for this episode
         trajectory_rewards.append(np.sum(rewards))
-        reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.mean(trajectory_rewards[-100:])})[0]
-        self.writer.add_summary(reward_summary, total_timesteps)
         #
         # add timesteps of this episode to batch_size
         batch_size += len(rewards)
+        total_timesteps += len(rewards)
+        reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.mean(trajectory_rewards[-100:])})[0]
+        self.writer.add_summary(reward_summary, total_timesteps)
         episodes += np.sum(dones)
         #
         # episode trajectory
@@ -294,7 +295,7 @@ class Agent:
       ##### Data Prep #####
       #
       # total timesteps is sum of all batch size
-      total_timesteps += batch_size
+      #total_timesteps += batch_size
       #
       # observations for this batch
       observations_batch = np.concatenate([trajectory["observations"] for trajectory in trajectories])
@@ -318,7 +319,7 @@ class Agent:
       ##### Optimization #####
       #
       # average reward of past 100 episodes
-      average_reward = np.mean(trajectory_rewards[-100:])
+      average_reward = np.mean(trajectory_rewards[-2000:])
       if average_reward > best_average_reward:
         _ = self.sess.run([self.backup,{}])        
       else:
@@ -327,8 +328,8 @@ class Agent:
         _ = self.sess.run([self.restore],{})
       #
       # mini updates
-      print(int(batch_size/self.mini_batch_size))
-      mini_iterations = int(np.max([self.mini_iterations, batch_size/self.mini_batch_size]))
+      print(int(2.5*batch_size/self.mini_batch_size))
+      mini_iterations = int(np.max([self.mini_iterations, 2.5*batch_size/self.mini_batch_size]))
       for i in range(mini_iterations):
         mini_batch_idx = np.random.choice(batch_size, self.mini_batch_size)
         observations_mini_batch = observations_batch[mini_batch_idx,:]
