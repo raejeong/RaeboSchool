@@ -21,10 +21,11 @@ class Agent:
                gamma=0.99,
                animate=True,
                logs_path="/home/user/workspace/logs/",
-               number_of_suggestions=5,
+               number_of_suggestions=8,
                mini_batch_size=32,
-               mini_iterations=350,
-               batch_rate=1.3):
+               mini_iterations=200,
+               episode_increase=10,
+               min_episodes=10):
     #
     # Tensorflow Session
     self.sess = sess
@@ -36,11 +37,12 @@ class Agent:
     self.lr = lr
     self.iterations = iterations
     self.min_batch_size = min_batch_size
-    self.batch_rate = batch_rate
+    self.episode_increase = episode_increase
     self.gamma = gamma
     self.number_of_suggestions = number_of_suggestions
     self.mini_batch_size = mini_batch_size
     self.mini_iterations = mini_iterations
+    self.min_episodes = min_episodes
     #
     # importing the desired network architecture
     self.network_class = importlib.import_module("architectures." + network_type)
@@ -72,6 +74,7 @@ class Agent:
       #
       # placeholder for the r + gamma*next_value
       self.returns = tf.placeholder(tf.float32, shape=[None, 1], name="returns")
+      self.average_reward = tf.placeholder(tf.float32, name="average_reward")
       #
       ##### Networks #####
       #
@@ -222,12 +225,14 @@ class Agent:
       #
       # batch size changes from episode to episode
       batch_size = 0
+      episodes = 0
       trajectories, returns = [], []
       #
       ##### Collect Batch #####
       #
       # collecting minium batch size of experience
-      while batch_size < self.min_batch_size:
+      # while batch_size < self.min_batch_size:
+      while episodes < self.min_episodes:
         #
         # restart env
         observation = self.env.reset()
@@ -272,6 +277,7 @@ class Agent:
         #
         # add timesteps of this episode to batch_size
         batch_size += len(rewards)
+        episodes += np.sum(dones)
         #
         # episode trajectory
         trajectory = {"observations":np.array(observations), "actions":np.array(actions), "rewards":np.array(rewards), "dones":np.array(dones)}
@@ -310,9 +316,13 @@ class Agent:
       # average reward of past 100 episodes
       average_reward = np.mean(trajectory_rewards[-100:])
       if average_reward > best_average_reward:
-        _ = sess.run([self.backup,{}])
+        _ = self.sess.run([self.backup,{}])        
       else:
-        _ = sess.run([self.restore],{})
+        print("restored!")
+        self.min_episodes *= 2
+        _ = self.sess.run([self.restore],{})
+      #
+      # mini updates
       for i in range(self.mini_iterations):
         mini_batch_idx = np.random.choice(batch_size, self.mini_batch_size)
         observations_mini_batch = observations_batch[mini_batch_idx,:]
@@ -321,14 +331,14 @@ class Agent:
         _, _ = self.sess.run([self.train_q_network, self.train_value_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.returns:returns_mini_batch, self.learning_rate:learning_rate})
       #
       # Taking the gradient step to optimize (train) the policy network (actor) and the value network (critic). mean and stddev is computed for kl divergence in the next step
-      q_network_loss, value_network_loss, _, _ = self.sess.run([self.q_network_loss, self.value_network_loss, self.kl, self.train_q_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.returns:returns_batch, self.learning_rate:learning_rate*10})
+      q_network_loss, value_network_loss, _, _ = self.sess.run([self.q_network_loss, self.value_network_loss, self.train_q_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.returns:returns_batch, self.learning_rate:learning_rate*10})
       #
       # comute value and q value to calculate advantage
-      q, v = self.sess.run([self.q_network.out, self.value_network.out], {self.observations:observations_batch, self.actions:actions_batch})
+      q, v = self.sess.run([self.best_q_network.out, self.best_value_network.out], {self.observations:observations_batch, self.actions:actions_batch})
       advantages_batch = np.squeeze(q-v).reshape([-1,1])
       #
       # Taking the gradient step to optimize (train) the policy network (actor) and the value network (critic). mean and stddev is computed for kl divergence in the next step
-      summary, kl, policy_network_losses, policy_network_loss, _ = self.sess.run([self.kl, self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:learning_rate})
+      summary, average_advantage, kl, policy_network_losses, policy_network_loss, _ = self.sess.run([self.summary, self.average_advantage, self.kl, self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate, self.average_reward:average_reward})
       #
       # shape of the policy_network_losses is check since its common to have nonsense size due to unintentional matmul instead of non element wise multiplication. Action dimension and advantage dimension are very important and hard to debug when not correct
       if isinstance(policy_network_losses, list):
