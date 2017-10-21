@@ -4,7 +4,7 @@ import gym
 import roboschool
 import numpy as np
 import tensorflow as tf
-from algorithms.a2c import A2C
+from algorithms.a2s_keep_best import Agent
 from datetime import datetime
 import argparse
 import os
@@ -23,14 +23,14 @@ def train(id, env_name, seed, network_type, network_size, iterations, min_batch_
 	np.random.seed(seed)
 
 	with tf.Session() as sess:
-		a2c = A2C(env, sess, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate)
+		agent = Agent(env, sess, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate)
 		saver = tf.train.Saver()
 		save_dir = "/home/user/workspace/agents/"+env_name+id
 		try:
 			os.mkdir(save_dir)
 		except:
 			pass
-		a2c.train(saver=saver, save_dir=save_dir+"/"+env_name+id+".ckpt")
+		agent.train(saver=saver, save_dir=save_dir+"/"+env_name+id+".ckpt")
 		env.close()
 
 def test(id, env_name, seed, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate, record):
@@ -41,7 +41,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
 	    env = gym.wrappers.Monitor(env,video_dir,force=True)
 
 	with tf.Session() as sess:
-	    a2c = A2C(env, sess)
+	    agent = Agent(env, sess)
 	    saver = tf.train.Saver()
 	    saver.restore(sess, save_dir+"/"+env_name+id+".ckpt")
 	    episode_reward = []
@@ -55,7 +55,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
 	                a=env.render("rgb_array")
 	            else:
 	                env.render()
-	            action = a2c.compute_action(observation)
+	            action = agent.compute_action(observation)
 	            if not isinstance(action, (list, tuple, np.ndarray)):
 	                action = np.array([action])
 	            action = np.concatenate(action)
@@ -71,14 +71,14 @@ if __name__ == "__main__":
 	args = getInputArgs()
 	env_setting = dict(id="-0",
 					   env_name='RoboschoolInvertedPendulum-v1',
-					   seed=0,
+					   seed=1,
 					   network_type='fully_connected_network',
 			           network_size='small',
-			           iterations=1000,
-		               min_batch_size=500,
-		               lr=5e-3,
-		               lr_schedule='constant',
-		               gamma=0.97,
+			           iterations=500,
+		               min_batch_size=2000,
+		               lr=4e-3,
+		               lr_schedule='linear',
+		               gamma=0.99,
 		               animate=False,
 		               record=False)
 	

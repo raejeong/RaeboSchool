@@ -4,7 +4,7 @@ import importlib
 from algorithms.utils import *
 import itertools
 
-class A2C:
+class Agent:
   """
   Advantage Actor Critic Algorithm
   """
@@ -264,6 +264,6 @@ class A2C:
         saver.save(self.sess, save_dir)
       #
       # Printing performance progress and other useful infromation
-      print("________________________________________________________________________________________________________________________________________")
-      print("{:>15} {:>10} {:>15} {:>15} {:>20} {:>20} {:>20}".format("total_timesteps", "iteration", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss"))
-      print("{:>15} {:>10} {:>15.2f} {:>15.2f} {:>20.5f} {:>20.2f} {:>20.2f}".format(total_timesteps, iteration, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss))
+      print("______________________________________________________________________________________________________________________________________________________")
+      print("{:>15} {:>10} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20}".format("total_timesteps", "iteration", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "average_stddev"))
+      print("{:>15} {:>10} {:>15.2f} {:>15.2f} {:>20.5f} {:>20.2f} {:>20.2f} {:>20.2f}".format(total_timesteps, iteration, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, np.mean(stddev_policy_old)))

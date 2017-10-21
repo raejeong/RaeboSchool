@@ -27,7 +27,7 @@ Clone this repo
 ```sudo docker build . -t raeboschool ```
 
 - run the docker container
-```sudo nvidia-docker run -it --env="DISPLAY" --env="QT_X11_NO_MITSHM=1" --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" -v $(pwd)/workspace:/home/user/workspace --privileged --net=host --name raeboschool_c raeboschool```
+```sudo docker stop raeboschool_c; sudo docker rm raeboschool_c; sudo nvidia-docker run -it --env="DISPLAY" --env="QT_X11_NO_MITSHM=1" --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" -v $(pwd)/workspace:/home/user/workspace --privileged --net=host --name raeboschool_c raeboschool```
 
 - to run additional terminal for the container
 
