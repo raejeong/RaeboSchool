@@ -21,11 +21,11 @@ class Agent:
                gamma=0.99,
                animate=True,
                logs_path="/home/user/workspace/logs/",
-               number_of_suggestions=8,
-               mini_batch_size=50,
-               mini_iterations=2300,
+               number_of_suggestions=4,
+               mini_batch_size=32,
+               mini_iterations=250,
                episode_increase=20,
-               min_episodes=80):
+               min_episodes=60):
     #
     # Tensorflow Session
     self.sess = sess
@@ -160,20 +160,20 @@ class Agent:
       for var, var_target in zip(sorted(self.backup_policy_network_vars,key=lambda v: v.name),sorted(self.best_policy_network_vars, key=lambda v: v.name)):
         self.restore.append(var_target.assign(var))
       
-      for var, var_target in zip(sorted(self.backup_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
-        self.restore.append(var_target.assign(var))
-      for var, var_target in zip(sorted(self.backup_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
-        self.restore.append(var_target.assign(var))
+      #for var, var_target in zip(sorted(self.backup_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
+      #  self.restore.append(var_target.assign(var))
+      #for var, var_target in zip(sorted(self.backup_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
+      #  self.restore.append(var_target.assign(var))
       self.restore = tf.group(*self.restore)
 
       self.backup = []
       for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.backup_policy_network_vars, key=lambda v: v.name)):
         self.backup.append(var_target.assign(var))
       
-      for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.backup_value_network_vars, key=lambda v: v.name)):
-        self.backup.append(var_target.assign(var))
-      for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.backup_q_network_vars, key=lambda v: v.name)):
-        self.backup.append(var_target.assign(var))
+      #for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.backup_value_network_vars, key=lambda v: v.name)):
+      #  self.backup.append(var_target.assign(var))
+      #for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.backup_q_network_vars, key=lambda v: v.name)):
+      #  self.backup.append(var_target.assign(var))
       self.backup = tf.group(*self.backup)
 
       self.summary = tf.summary.merge_all()
