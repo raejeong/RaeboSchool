@@ -16,6 +16,7 @@ RUN apt-get update
 
 # install core packages
 RUN apt-get install -y python3-pip git
+RUN apt update
 RUN apt-get install -y python3-matplotlib python3-scipy python3-numpy
 
 # install python packages
