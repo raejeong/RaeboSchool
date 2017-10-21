@@ -75,6 +75,7 @@ class Agent:
       # placeholder for the r + gamma*next_value
       self.returns = tf.placeholder(tf.float32, shape=[None, 1], name="returns")
       self.average_reward = tf.placeholder(tf.float32, name="average_reward")
+      tf.summary.scalar('"average_reward', self.average_reward)
       #
       ##### Networks #####
       #
