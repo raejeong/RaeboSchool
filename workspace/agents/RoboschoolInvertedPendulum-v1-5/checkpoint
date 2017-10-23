@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/user/workspace/agents/RoboschoolInvertedPendulum-v1-5/RoboschoolInvertedPendulum-v1-5.ckpt"
+all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolInvertedPendulum-v1-5/RoboschoolInvertedPendulum-v1-5.ckpt"

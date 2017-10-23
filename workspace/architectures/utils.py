@@ -19,10 +19,10 @@ def get_network_param(network_size):
 	network_param = None
 
 	if network_size=='small':
-		network_param = [16]
+		network_param = [32]
 
 	elif network_size=='medium':
-		network_param = [32, 16]
+		network_param = [32, 32]
 
 	elif network_size=='large':
 		network_param = [128, 64, 32]

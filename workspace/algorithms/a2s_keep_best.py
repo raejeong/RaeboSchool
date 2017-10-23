@@ -21,11 +21,11 @@ class Agent:
                gamma=0.99,
                animate=True,
                logs_path="/home/user/workspace/logs/",
-               number_of_suggestions=8,
-               mini_batch_size=60,
-               mini_iterations=350,
-               episode_increase=10,
-               min_episodes=30):
+               number_of_suggestions=5,
+               mini_batch_size=64,
+               mini_iterations=3000,
+               episode_increase=1,
+               min_episodes=6):
     #
     # Tensorflow Session
     self.sess = sess
@@ -43,6 +43,7 @@ class Agent:
     self.mini_batch_size = mini_batch_size
     self.mini_iterations = mini_iterations
     self.min_episodes = min_episodes
+    self.replay_buffer_size = 10000
     #
     # importing the desired network architecture
     self.network_class = importlib.import_module("architectures." + network_type)
@@ -50,6 +51,9 @@ class Agent:
     # getting the shape of observation space and action space of the environment
     self.observation_shape = self.env.observation_space.shape[0]
     self.action_shape = self.env.action_space.shape[0]
+    self.total_observations_batch = np.zeros(self.observation_shape)[None]
+    self.total_actions_batch = np.zeros(self.action_shape)[None]
+    self.total_returns_batch = np.zeros(1)[None]
     #
     # scoping variables with A2S
     with tf.variable_scope("A2S"):
@@ -101,8 +105,8 @@ class Agent:
       self.best_mean_policy = tf.reshape(self.best_policy_network.out,[-1, self.action_shape])
       #
       # isolating the stddev outputted by the policy network, softplus is used to make sure that the stddev is positive
-      self.backup_stddev_policy = tf.constant(0.5)
-      self.best_stddev_policy = tf.constant(0.5)
+      self.backup_stddev_policy = tf.constant(1.0)
+      self.best_stddev_policy = tf.constant(1.0)
       #
       # gaussian distribution is built with mean and stddev from the policy network
       self.backup_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.backup_mean_policy, self.backup_stddev_policy)
@@ -160,21 +164,21 @@ class Agent:
       for var, var_target in zip(sorted(self.backup_policy_network_vars,key=lambda v: v.name),sorted(self.best_policy_network_vars, key=lambda v: v.name)):
         self.restore.append(var_target.assign(var))
       
-      #for var, var_target in zip(sorted(self.backup_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
+      # for var, var_target in zip(sorted(self.backup_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
       #  self.restore.append(var_target.assign(var))
-      #for var, var_target in zip(sorted(self.backup_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
+      # for var, var_target in zip(sorted(self.backup_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
       #  self.restore.append(var_target.assign(var))
-      self.restore = tf.group(*self.restore)
+      # self.restore = tf.group(*self.restore)
 
       self.backup = []
       for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.backup_policy_network_vars, key=lambda v: v.name)):
         self.backup.append(var_target.assign(var))
       
-      #for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.backup_value_network_vars, key=lambda v: v.name)):
+      # for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.backup_value_network_vars, key=lambda v: v.name)):
       #  self.backup.append(var_target.assign(var))
-      #for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.backup_q_network_vars, key=lambda v: v.name)):
+      # for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.backup_q_network_vars, key=lambda v: v.name)):
       #  self.backup.append(var_target.assign(var))
-      self.backup = tf.group(*self.backup)
+      # self.backup = tf.group(*self.backup)
 
       self.summary = tf.summary.merge_all()
       self.reward_summary = tf.summary.scalar("average_reward", self.average_reward)
@@ -184,16 +188,23 @@ class Agent:
     self.writer = tf.summary.FileWriter(logs_path, sess.graph)
     self.sess.run(tf.global_variables_initializer())
   #
+  # agent update to best
+  def update_to_best(self):
+    _ = self.sess.run([self.restore],{})
+  #
   # samples action from the current policy network
-  def compute_action(self, observation):
-    suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None]})
-    best_action = None
-    best_q = -np.inf
-    for i in range(self.number_of_suggestions):
-      current_q = self.compute_q(observation, suggested_actions[0][:,i,:])
-      if current_q > best_q:
-        best_q = current_q
-        best_action = suggested_actions[0][:,i,:]
+  def compute_action(self, observation, epsilon=1.0):
+    if np.random.random() < epsilon:
+      suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None]})
+      best_action = None
+      best_q = -np.inf
+      for i in range(self.number_of_suggestions):
+        current_q = self.compute_q(observation, suggested_actions[0][:,i,:])
+        if current_q > best_q:
+          best_q = current_q
+          best_action = suggested_actions[0][:,i,:]
+    else:
+      best_action = [np.random.uniform(self.env.action_space.low[0], self.env.action_space.high[0], self.action_shape)]
     return best_action
   #
   # computes the value for a given observation
@@ -210,6 +221,7 @@ class Agent:
     # keeping count of total timesteps of environment experience
     total_timesteps = 0
     total_episodes = 0
+    last_timestep = 0
     #
     # sum of rewards of 100 episodes, not for learning, just a performance metric and logging
     trajectory_rewards = []
@@ -219,22 +231,24 @@ class Agent:
     #
     # keeping track of the best averge reward
     best_average_reward = -np.inf
+    iteration = 0
     #
     ##### Training #####
     #
     # training iterations
-    for iteration in range(self.iterations):
+    while total_timesteps < self.iterations:
+      iteration += 1
       #
       # batch size changes from episode to episode
       batch_size = 0
       episodes = 0
-      trajectories, returns = [], []
+      trajectories, returns, advantages_ = [], [], []
       #
       ##### Collect Batch #####
       #
       # collecting minium batch size of experience
       # while batch_size < self.min_batch_size:
-      while episodes < self.min_episodes:
+      while episodes < self.min_episodes or batch_size < self.min_batch_size:
         #
         # restart env
         observation = self.env.reset()
@@ -271,7 +285,7 @@ class Agent:
         ##### Data Appending #####
         #
         # keeping trajectory_rewards as fifo of 100
-        if len(trajectory_rewards) > 2000:
+        if len(trajectory_rewards) > self.min_episodes:
           trajectory_rewards.pop(0)
         #
         # get sum of reward for this episode
@@ -280,7 +294,7 @@ class Agent:
         # add timesteps of this episode to batch_size
         batch_size += len(rewards)
         total_timesteps += len(rewards)
-        reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.mean(trajectory_rewards[-100:])})[0]
+        reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.sum(rewards)})[0]
         self.writer.add_summary(reward_summary, total_timesteps)
         episodes += np.sum(dones)
         #
@@ -291,6 +305,11 @@ class Agent:
         # computing the discounted return for this episode (NOT A SINGLE NUMBER, FOR EACH OBSERVATION)
         return_ = discount(trajectory["rewards"], self.gamma)
         returns.append(return_)
+        values = self.compute_value(observations)
+        #
+        # computing the advantage estimate
+        advantage_ = return_ - np.concatenate(values)
+        advantages_.append(advantage_)
       #
       ##### Data Prep #####
       #
@@ -313,29 +332,51 @@ class Agent:
       # discounted returns for this batch. itertool used to make batch into long np array
       returns_batch = np.array(list(itertools.chain.from_iterable(returns))).reshape([-1,1])
       #
+      # advantages for this batch. itertool used to make batch into long np array
+      advantages_batch_ = np.array(list(itertools.chain.from_iterable(advantages_))).flatten().reshape([-1,1])
+      #
       # learning rate
       learning_rate = self.lr
+      if kl > 2e-3 * 2: 
+        learning_rate /= 1.5
+      elif kl < 2e-3 / 2: 
+        learning_rate *= 1.5
+
       # 
       ##### Optimization #####
       #
+      #
+      # if total_timesteps - last_timestep > 50000:
+      #   self.mini_iterations *= 2
+      #   self.episodes *= 2
+      #   last_timestep = total_timesteps
+      #   self.lr *= 2
+      #
       # average reward of past 100 episodes
-      average_reward = np.mean(trajectory_rewards[-2000:])
+      average_reward = np.mean(trajectory_rewards[-self.min_episodes:])
       if average_reward > best_average_reward:
         _ = self.sess.run([self.backup,{}])        
-      else:
+      elif 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
         print("restored!")
-        self.min_episodes += self.episode_increase
+        # self.min_episodes += self.episode_increase
         _ = self.sess.run([self.restore],{})
       #
       # mini updates
-      print(int(batch_size/self.mini_batch_size))
+      self.total_observations_batch = np.concatenate([self.total_observations_batch,observations_batch])
+      self.total_actions_batch = np.concatenate([self.total_actions_batch,actions_batch])
+      self.total_returns_batch = np.concatenate([self.total_returns_batch,returns_batch])
+      if self.total_returns_batch.shape[0] > self.replay_buffer_size:
+        self.total_observations_batch = self.total_observations_batch[-self.replay_buffer_size:,:]
+        self.total_actions_batch = self.total_actions_batch[-self.replay_buffer_size:,:]
+        self.total_returns_batch = self.total_returns_batch[-self.replay_buffer_size:]
+
       mini_iterations = int(np.max([self.mini_iterations, batch_size/self.mini_batch_size]))
-      for i in range(mini_iterations):
-        mini_batch_idx = np.random.choice(batch_size, self.mini_batch_size)
-        observations_mini_batch = observations_batch[mini_batch_idx,:]
-        actions_mini_batch = actions_batch[mini_batch_idx,:]
-        returns_mini_batch = returns_batch[mini_batch_idx,:]
-        _, _ = self.sess.run([self.train_q_network, self.train_value_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.returns:returns_mini_batch, self.learning_rate:learning_rate})
+      for i in range(self.mini_iterations):
+        mini_batch_idx = np.random.choice(self.total_returns_batch.shape[0], self.mini_batch_size)
+        observations_mini_batch = self.total_observations_batch[mini_batch_idx,:]
+        actions_mini_batch = self.total_actions_batch[mini_batch_idx,:]
+        returns_mini_batch = self.total_returns_batch[mini_batch_idx,:]
+        _, _ = self.sess.run([self.train_q_network, self.train_value_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.returns:returns_mini_batch, self.learning_rate:learning_rate/10})
       #
       # Taking the gradient step to optimize (train) the policy network (actor) and the value network (critic). mean and stddev is computed for kl divergence in the next step
       q_network_loss, value_network_loss, _, _ = self.sess.run([self.q_network_loss, self.value_network_loss, self.train_q_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.returns:returns_batch, self.learning_rate:learning_rate*10})
@@ -360,9 +401,9 @@ class Agent:
         saver.save(self.sess, save_dir)
       #
       # Printing performance progress and other useful infromation
-      print("______________________________________________________________________________________________________________________________________________________________________________")
-      print("{:>15} {:>15} {:>10} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20} {:>20}".format("total_timesteps", "episodes", "iteration", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "q_network_loss", "average_advantage"))
-      print("{:>15} {:>15} {:>10} {:>15.2f} {:>15.2f} {:>20.5f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f}".format(total_timesteps, total_episodes,iteration, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage))
+      print("___________________________________________________________________________________________________________________________________________________________________________________________________________")
+      print("{:>15} {:>15} {:>10} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20} {:>20} {:>20}".format("total_timesteps", "episodes", "iteration", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "q_network_loss", "average_advantage", "batch_size"))
+      print("{:>15} {:>15} {:>10} {:>15.2f} {:>15.2f} {:>20.5f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>20}".format(total_timesteps, total_episodes,iteration, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, batch_size))
       self.writer.add_summary(summary, total_timesteps)
 
     self.writer.close()
