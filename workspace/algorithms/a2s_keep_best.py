@@ -23,7 +23,7 @@ class Agent:
                logs_path="/home/user/workspace/logs/",
                number_of_suggestions=5,
                mini_batch_size=64,
-               mini_iterations=3000,
+               mini_iterations=10000,
                episode_increase=1,
                min_episodes=6):
     #
