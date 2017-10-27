@@ -4,7 +4,7 @@ import gym
 import roboschool
 import numpy as np
 import tensorflow as tf
-from algorithms.a2s_keep_best import Agent
+from algorithms.a2s_ import Agent
 from datetime import datetime
 import argparse
 import os
@@ -41,7 +41,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
         env = gym.wrappers.Monitor(env,video_dir,force=True)
 
     with tf.Session() as sess:
-        agent = Agent(env, sess)
+        agent = Agent(env, sess, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate)
         saver = tf.train.Saver()
         saver.restore(sess, save_dir+"/"+env_name+id+".ckpt")
         agent.update_to_best()
@@ -72,12 +72,12 @@ if __name__ == "__main__":
     args = getInputArgs()
     env_setting = dict(id="-5",
                        env_name='RoboschoolHopper-v1',
-                       seed=1,
+                       seed=2,
                        network_type='fully_connected_network',
                        network_size='medium',
                        iterations=1000000,
-                       min_batch_size=200,
-                       lr=3e-3,
+                       min_batch_size=300,
+                       lr=1e-3,
                        lr_schedule='constant',
                        gamma=0.99,
                        animate=False,

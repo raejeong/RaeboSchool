@@ -12,8 +12,8 @@ class Network:
 				if i == len(network_param):
 					break
 				out = dense(out, network_param[i], name+"/fc"+str(i))
-				out = tf.contrib.layers.layer_norm(out)
+				# out = tf.contrib.layers.layer_norm(out)
 				out = tf.tanh(out)
-				out = tf.nn.dropout(out, keep_prob)
+				# out = lrelu(out)
 			out = dense(out, out_shape, name+"/out", initializer=tf.random_uniform_initializer(-0.1,0.1))
 		self.out = out
