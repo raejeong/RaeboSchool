@@ -4,205 +4,285 @@ import importlib
 from algorithms.utils import *
 import itertools
 
-
 class Agent:
   """
-  Advantage Actor Critic Algorithm
+  Advantage Actor Suggestor Algorithm
+
+  Note:
+    Implementation of Adavantage Actor Suggestor algorithm as proposed in ###
+  
+  Args: 
+    env: OpenAI environment object
+    
+    sess: TensorFlow Session object
+    
+    data_collection_params (dict): Parameters for data collection / interacting with the environment
+      'min_batch_size' (int): Minimum batch size for interacting with the environment
+      'min_episodes' (int): Minimum episodes to interact with the environment per batch 
+      'episode_adapt_rate' (int): amount to increase or decrease for min_epidoes
+    
+    training_params (dict): Parameters for training
+      'total_timesteps' (int): Total time steps to train for 
+      'learning_rate' (double): Learning rate for gradient updates 
+      'adaptive_lr' (bool): Use adaptive learning rate based on the desired kl divergence between current and last policy 
+      'desired_kl' (double): Desired kl divergence for adaptive learning rate
+    
+    rl_params (dict): Parameters for general reinforcement learning
+      'gamma' (double): discount rate 
+      'num_policy_update' (int): number of policy update from the current batch collected from the environment
+    
+    network_params (dict): Parameters to define the network used
+      'q_network' (list): Defines the Q network e.g. ['fully_connected_network','small/medium/large'] 
+      'value_network' (list): Defines the value network e.g. ['fully_connected_network','small/medium/large'] 
+      'policy_network' (list): Defines the policy network e.g. ['fully_connected_network','small/medium/large'] 
+    
+    algorithm_params (dict): Parameters specific to the algorithm 
+      'number_of_suggestions' (int): Number of suggestion given by the policy network to the Q network 
+      'restore' (bool): Restore the best networks backed up when the agent performs bad with some probabilty
+      'DDQN' (bool): Use double Q-learning 
+      'std_dev' (list): Different ways to define the standard devation of the policy e.g. ['fixed'/'linear'/'network', (double)/(double)/-] NOTE: network option has the policy network to output the stddev 
+      'experience_replay' (None/string): Which experience replay to use e.g. None/'ER'/'PER' NOTE: no experience replay, experience replay, priotized experience replay
+      'experience_replay_size' (int): Experience replay buffer size 
+      'ER_batch_size' (int): Experience replay buffer size 
+      'PER_alpha' (double): Proportional prioritization constant 
+      'PER_epsilon' (double): Small positive constant that ensures that no transition has zero priority
+               
+    logs_path (string): Path to save training logs
+
   """
   def __init__(self,
                env,
                sess,
-               network_type='fully_connected_network',
-               network_size='small',
-               iterations=500,
-               min_batch_size=1000,
-               lr=1e-3,
-               lr_schedule='linear',
-               gamma=0.99,
-               animate=True,
-               logs_path="/home/user/workspace/logs/",
-               number_of_suggestions=10,
-               mini_batch_size=500,
-               mini_iterations=300,
-               episode_increase=3,
-               min_episodes=1):
-    #
+               data_collection_params = {'min_batch_size':1000,
+                                         'min_episodes':1, 
+                                         'episode_adapt_rate':3},
+               training_params = {'total_timesteps':1000000, 
+                                  'learning_rate':1e-3, 
+                                  'adaptive_lr':True, 
+                                  'desired_kl':2e-3},
+               rl_params = {'gamma':0.99, 
+                            'num_policy_update':1},
+               network_params = {'q_network':['fully_connected_network','large'], 
+                                 'value_network':['fully_connected_network','large'], 
+                                 'policy_network':['fully_connected_network','large']},
+               algorithm_params = {'number_of_suggestions':10, 
+                                  'restore': True,
+                                  'DDQN':True, 
+                                  'std_dev':['fixed', 0.2], 
+                                  'experience_replay':'PER', 
+                                  'experience_replay_size':200000, 
+                                  'ER_batch_size':32, 
+                                  'PER_alpha':0.6, 
+                                  'PER_epsilon':0.01},
+               logs_path="/home/user/workspace/logs/"):
+
+  PE 
+  DDQN
+  output variance/ adaptive variance
+  epison greedy
+  check std_dev
+  
     # Tensorflow Session
     self.sess = sess
-    #
+    
     # OpenAI Environment
     self.env = env
-    #
+    
     # Hyper Parameters
-    self.lr = lr
-    self.iterations = iterations
-    self.min_batch_size = min_batch_size
-    self.episode_increase = episode_increase
-    self.gamma = gamma
-    self.number_of_suggestions = number_of_suggestions
-    self.mini_batch_size = mini_batch_size
-    self.mini_iterations = mini_iterations
-    self.min_episodes = min_episodes
-    #
-    # importing the desired network architecture
-    self.network_class = importlib.import_module("architectures." + network_type)
-    #
-    # getting the shape of observation space and action space of the environment
+    self.data_collection_params = data_collection_params
+    self.training_params = training_params
+    self.rl_params = rl_params
+    self.network_params = network_params
+    self.algorithm_params = algorithm_params
+    
+    # Path to save training logs
+    self.logs_path = logs_path
+    
+    # Importing the desired network architecture
+    self.q_network_class = importlib.import_module("architectures." + self.network_params['q_network'][0])
+    self.value_network_class = importlib.import_module("architectures." + self.network_params['value_network'][0])
+    self.policy_network_class = importlib.import_module("architectures." + self.network_params['policy_network'][0])
+
+    # Getting the shape of observation space and action space of the environment
     self.observation_shape = self.env.observation_space.shape[0]
     self.action_shape = self.env.action_space.shape[0]
-    #
-    # scoping variables with A2S
+
+    # Experience replay buffer
+    if self.algorithm_params['experience_replay']=="PER":
+      self.replay_buffer = PrioritizedExperienceReplay(self.algorithm_params['experience_replay_size'], self.algorithm_params['PER_epsilon'], self.algorithm_params['PER_alpha'])
+    elif self.algorithm_params['experience_replay']=="ER":
+      self.replay_buffer = ReplayBuffer(self.algorithm_params['experience_replay_size'])
+    else:
+      self.replay_buffer = None
+    
+    # Scoping variables with A2S
     with tf.variable_scope("A2S"):
-      #
+
       ##### Placeholders #####
-      #
-      # placeholder for observation
+      
+      # Placeholder for observations
       self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
-      #
-      # placeholder for actions taken, this is used for the policy gradient
+      
+      # Placeholder for actions taken, this is used for the policy gradient
       self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
-      #
-      # placeholder for the advantage function
+      
+      # Placeholder for the advantage function
       self.advantages = tf.placeholder(tf.float32, shape=[None, 1], name="advantages")
-      #
-      # placeholder for learning rate for the optimizer
+      
+      # Placeholder for learning rate for the optimizer
       self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
-      #
-      # mean and the stddev of the old policy distrubution for KL calculation
-      self.mean_policy_old = tf.placeholder(tf.float32, name="mean_policy_old")
-      self.stddev_policy_old = tf.placeholder(tf.float32, name="stddev_policy_old")
-      #
-      # placeholder for the r + gamma*next_value
+
+      # Placeholder for std dev
+      self.std_dev = tf.placeholder(tf.float32, name="std_dev")
+      
+      # Mean and the stddev of the last policy distrubution for KL calculation
+      self.last_mean_policy_ph = tf.placeholder(tf.float32, name="last_mean_policy")
+      self.last_std_dev_policy_ph = tf.placeholder(tf.float32, name="last_std_dev_policy")
+      
+      # Placeholder for the returns e.g. r + gamma*next_value
       self.returns = tf.placeholder(tf.float32, shape=[None, 1], name="returns")
+      
+      # Placeholder for average reward for logging
       self.average_reward = tf.placeholder(tf.float32, name="average_reward")
-      #
+      
       ##### Networks #####
-      #
-      # backup policy network, backs up the best poloicy in case the update is bad. outputs the mean for the action
-      self.last_policy_network = self.network_class.Network(sess, self.observations, self.action_shape, "last_policy_network", network_size)
+      
+      # Define the output shape of the policy networks
+      if self.algorithm_params['std_dev'][0] == 'network':
+        policy_output_shape = self.action_shape*2
+      else
+        policy_output_shape = self.action_shape
+
+      # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be restored from the back up policy. 
+      self.current_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['policy_network'][1])
+      self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/current_policy_network')
+
+      # Backup of the best policy network so far, backs up the best policy in case the update is bad. outputs the mean for the action
+      self.best_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "backup_policy_network", self.network_params['policy_network'][1])
+      self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/backup_policy_network')
+
+      # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
+      self.last_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['policy_network'][1])
       self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/last_policy_network')
-      #
-      # backup policy network, backs up the best poloicy in case the update is bad. outputs the mean for the action
-      self.backup_policy_network = self.network_class.Network(sess, self.observations, self.action_shape, "backup_policy_network", network_size)
-      self.backup_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/backup_policy_network')
-      #
-      # the current best policy that will be updated, if the updated policy performs worse, the policy will be restored from the back up policy. 
-      self.best_policy_network = self.network_class.Network(sess, self.observations, self.action_shape, "best_policy_network", network_size)
-      self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/best_policy_network')
-      #
-      # backup value network, outputs value of observation, used for advantage estimate
-      self.backup_value_network = self.network_class.Network(sess, self.observations, 1, "backup_value_network", network_size,)
-      self.backup_value_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/backup_value_network')
-      #
-      # best value network
-      self.best_value_network = self.network_class.Network(sess, self.observations, 1, "best_value_network", network_size)
+      
+      # Current value function used for advantage estimate
+      self.current_value_network = self.value_network_class.Network(sess, self.observations, 1, "current_value_network", self.network_params['value_network'][1])
+      self.current_value_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/current_value_network')
+
+      # Backup of the best value network so far, backs up the best value network in case the update is bad
+      self.best_value_network = self.value_network_class.Network(sess, self.observations, 1, "best_value_network", self.network_params['value_network'][1])
       self.best_value_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/best_value_network')
-      #
+      
       ##### Policy Action Probability #####
-      #
-      # isolating the mean outputted by the policy network
-      self.last_mean_policy = tf.reshape(self.last_policy_network.out,[-1, self.action_shape])
-      self.backup_mean_policy = tf.reshape(self.backup_policy_network.out,[-1, self.action_shape])
-      self.best_mean_policy = tf.reshape(self.best_policy_network.out,[-1, self.action_shape])
-      #
-      # isolating the stddev outputted by the policy network, softplus is used to make sure that the stddev is positive
-      self.last_stddev_policy = tf.constant(0.3)
-      self.backup_stddev_policy = tf.constant(0.3)
-      self.best_stddev_policy = tf.constant(0.3)
-      #
-      # gaussian distribution is built with mean and stddev from the policy network
-      self.last_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.last_mean_policy, self.last_stddev_policy)
-      self.backup_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.backup_mean_policy, self.backup_stddev_policy)
-      self.best_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.best_mean_policy, self.best_stddev_policy)
-      #
-      # KL divergence from old policy distribution to the new policy distribution
-      self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.best_gaussian_policy_distribution, self.last_gaussian_policy_distribution))
+      
+      # Isolating the mean outputted by the policy network
+      self.current_mean_policy = tf.reshape(tf.squeeze(self.current_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
+      self.best_mean_policy = tf.reshape(tf.squeeze(self.best_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
+      self.last_mean_policy = tf.reshape(tf.squeeze(self.last_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
+      
+      # Isolating the stddev outputted by the policy network, softplus is used to make sure that the stddev is positive
+      if self.algorithm_params['std_dev'][0]=='network':
+        self.current_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.current_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
+        self.best_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.best_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
+        self.last_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.last_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
+      elif self.algorithm_params['std_dev'][0]=='linear':
+      
+      # Gaussian distribution is built with mean and stddev from the policy network
+      self.current_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.current_mean_policy, self.current_std_dev_policy)
+      self.best_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.best_mean_policy, self.best_std_dev_policy)
+      self.last_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.last_mean_policy, self.last_std_dev_policy)
+      
+      # Compute and log the KL divergence from last policy distribution to the current policy distribution
+      self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.current_gaussian_policy_distribution, self.last_gaussian_policy_distribution))
       tf.summary.scalar('kl', self.kl)
-      #
-      # action suggested by the policy network
-      self.suggested_actions_out = tf.reshape(self.best_gaussian_policy_distribution._sample_n(self.number_of_suggestions),[-1,self.number_of_suggestions,self.action_shape])
-      self.state_actions = tf.concat([self.observations, self.actions],1)      
+      
+      # Action suggested by the current policy network
+      number_of_suggestions = self.algorithm_params['number_of_suggestions']
+      self.suggested_actions_out = tf.reshape(self.current_gaussian_policy_distribution._sample_n(number_of_suggestions),[-1,number_of_suggestions,self.action_shape])
+      self.state_action_pairs = tf.concat([self.observations, self.actions],1)  
+
       ##### Q Network #####
-      #
-      # backup q network, outputs value of observation, used for advantage estimate
-      self.backup_q_network = self.network_class.Network(self.sess, self.state_actions, 1, "backup_q_network", 'large')
-      self.backup_q_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/backup_q_network')
-      #
-      # best q network
-      self.best_q_network = self.network_class.Network(self.sess, self.state_actions, 1, "best_q_network", 'large')
+      
+      # Current Q network, outputs Q value of observation, used for advantage estimate
+      self.current_q_network = self.q_network_class.Network(self.sess, self.state_actions, 1, "current_q_network", self.network_params['q_network'][1])
+      self.current_q_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/current_q_network')
+
+      # Best Q network, outputs Q value of observation, used for advantage estimate
+      self.best_q_network = self.q_network_class.Network(self.sess, self.state_actions, 1, "best_q_network", self.network_params['q_network'][1])
       self.best_q_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='A2S/best_q_network')
-      #
+      
       ##### Loss #####
-      #
-      # loss for the policy network and value network
-      self.negative_log_prob = -self.best_gaussian_policy_distribution.log_prob(self.actions)
+      
+      # Compute and log loss for policy network
+      self.negative_log_prob = -self.current_gaussian_policy_distribution.log_prob(self.actions)
       self.policy_network_losses = self.negative_log_prob*self.advantages # be careful with this operation, it should be element wise not matmul!
-      self.policy_network_losses -= self.best_gaussian_policy_distribution.entropy()
-      self.average_advantage = tf.reduce_mean(self.advantages)
-      tf.summary.scalar('average_advantage', self.average_advantage)
       self.policy_network_loss = tf.reduce_mean(self.policy_network_losses)
       tf.summary.scalar('policy_network_loss', self.policy_network_loss)
+
+      # Compute and log loss for value network
       self.value_network_y = self.returns
-      self.value_network_loss = tf.reduce_mean(tf.squared_difference(self.best_value_network.out, self.value_network_y))
+      self.value_network_loss = tf.reduce_mean(tf.squared_difference(self.current_value_network.out, self.value_network_y))
       tf.summary.scalar('value_network_loss', self.value_network_loss)
+      
+      # Compute and log loss for Q network
       self.q_network_y = self.returns
-      self.q_network_loss = tf.reduce_mean(tf.squared_difference(self.best_q_network.out,self.q_network_y))
+      self.q_network_loss = tf.reduce_mean(tf.squared_difference(self.current_q_network.out,self.q_network_y))
       tf.summary.scalar('q_network_loss', self.q_network_loss)
-      #
+
       ##### Optimization #####
-      #
-      # optimizer for the policy network and value network
+      
+      # Optimizers for the networks
       self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
       self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
       self.q_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-      #
-      # training operation for the policy network and value network
+      
+      # Training operation for the pnetworks
       self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
       self.train_value_network = self.value_network_optimizer.minimize(self.value_network_loss)
       self.train_q_network = self.q_network_optimizer.minimize(self.q_network_loss)
-      #
-      ##### Update #####
-      #
-      # update 
-      self.restore = []
-      for var, var_target in zip(sorted(self.backup_policy_network_vars,key=lambda v: v.name),sorted(self.best_policy_network_vars, key=lambda v: v.name)):
-        self.restore.append(var_target.assign(var))
       
-      for var, var_target in zip(sorted(self.backup_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
+      ##### Copy Network Operations #####
+      
+      # Restore operations for the policy, value and Q networks for when the agent performs very bad and need to recover
+      self.restore = []
+      for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.current_policy_network_vars, key=lambda v: v.name)):
+        self.restore.append(var_target.assign(var))
+      for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.current_value_network_vars, key=lambda v: v.name)):
        self.restore.append(var_target.assign(var))
-      for var, var_target in zip(sorted(self.backup_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
+      for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.current_q_network_vars, key=lambda v: v.name)):
        self.restore.append(var_target.assign(var))
       self.restore = tf.group(*self.restore)
 
+      # Backup operations for the policy, value and Q networks for when the agent performs very well and want to backup the best network
       self.backup = []
-      for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.backup_policy_network_vars, key=lambda v: v.name)):
+      for var, var_target in zip(sorted(self.current_policy_network_vars,key=lambda v: v.name),sorted(self.best_policy_network_vars, key=lambda v: v.name)):
         self.backup.append(var_target.assign(var))
-      
-      for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.backup_value_network_vars, key=lambda v: v.name)):
+      for var, var_target in zip(sorted(self.current_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
        self.backup.append(var_target.assign(var))
-      for var, var_target in zip(sorted(self.best_q_network_vars,key=lambda v: v.name),sorted(self.backup_q_network_vars, key=lambda v: v.name)):
+      for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.best_q_network_vars, key=lambda v: v.name)):
        self.backup.append(var_target.assign(var))
       self.backup = tf.group(*self.backup)
 
+      # Copy over the current policy network to last policy network for KL divergence Calculation
       self.last = []
-      for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.last_policy_network_vars, key=lambda v: v.name)):
+      for var, var_target in zip(sorted(self.current_policy_network_vars,key=lambda v: v.name),sorted(self.last_policy_network_vars, key=lambda v: v.name)):
         self.last.append(var_target.assign(var))
       self.last = tf.group(*self.last)
 
+      ##### Logging #####
+
+      # Log useful information
       self.summary = tf.summary.merge_all()
       self.reward_summary = tf.summary.scalar("average_reward", self.average_reward)
+      self.average_advantage = tf.reduce_mean(self.advantages)
+      tf.summary.scalar('average_advantage', self.average_advantage)
 
-    #
-    # initialize all tf variables
+    # Setup the tf summary writer and initialize all tf variables
     self.writer = tf.summary.FileWriter(logs_path, sess.graph)
     self.sess.run(tf.global_variables_initializer())
-  #
-  # agent update to best
-  def update_to_best(self):
-    _ = self.sess.run([self.restore],{})
-  #
-  # samples action from the current policy network
-  def compute_action(self, observation, epsilon=0.9):
+
+  # Samples action from the current policy network and selects the action with highest Q value
+  def compute_action(self, observation):
     suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None]})
     best_action = None
     best_q = -np.inf
@@ -212,15 +292,32 @@ class Agent:
         best_q = current_q
         best_action = suggested_actions[0][:,i,:]
     return best_action
-  #
-  # computes the value for a given observation
+
+  # Compute Q value of observation and action
+  def compute_q(self, observation, action):
+    if self.algorithm_params['DDQN']:
+      q_value = self.sess.run([self.best_q_network.out],{self.observations: observation[None], self.actions:action})[0]
+    else:
+      q_value = self.sess.run([self.current_q_network.out],{self.observations: observation[None], self.actions:action})[0]
+
+    return q_value
+
+  # Computes the value for given observations
   def compute_value(self, observations):
     return self.sess.run(self.best_value_network.out, {self.observations: observations})
-  #
-  #
-  def compute_q(self, observation, actions):
-    return self.sess.run([self.best_q_network.out],{self.observations: observation[None], self.actions:actions})[0]
-  #
+  
+  # Restore the best networks
+  def restore(self):
+    _ = self.sess.run([self.restore],{})
+  
+  # Backup the current networks
+  def backup(self):
+    _ = self.sess.run([self.backup],{})
+  
+  # Backup the current policy to last policy network for KL divergence calculation
+  def backup_current_policy_to_last_policy(self):
+    _ = self.sess.run([self.last],{})
+
   # Collecting experience (data) and training the agent (networks)
   def train(self, saver=None, save_dir=None):
     #

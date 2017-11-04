@@ -4,26 +4,76 @@ import gym
 import roboschool
 import numpy as np
 import tensorflow as tf
-from algorithms.a2s_ import Agent
 from datetime import datetime
 import argparse
 import os
 
-#
+env_settings = {
+    'A2C':dict(agent_class=importlib.import_module('algorithms.A2C'),
+               id="-5",
+               env_name='RoboschoolHalfCheetah-v1',
+               seed=2,
+               record=False,
+               data_collection_params = {'min_batch_size':1000,
+                                         'min_episodes':1, 
+                                         'episode_adapt_rate':3},
+               training_params = {'total_timesteps':1000000, 
+                                  'learning_rate':1e-3, 
+                                  'adaptive_lr':True, 
+                                  'desired_kl':2e-3},
+               rl_params = {'gamma':0.99, 
+                            'num_policy_update':1},
+               network_params = {'value_network':['fully_connected_network','medium'], 
+                                 'policy_network':['fully_connected_network','medium']},
+               algorithm_params = {'restore': True,
+                                   'std_dev':['fixed', 0.2]},
+               logs_path="/home/user/workspace/logs/",
+               ),
+    'A2S':dict(agent_class=importlib.import_module('algorithms.A2S'),
+               id="-5",
+               env_name='RoboschoolHalfCheetah-v1',
+               seed=2,
+               record=False,
+               data_collection_params = {'min_batch_size':1000,
+                                         'min_episodes':1, 
+                                         'episode_adapt_rate':3},
+               training_params = {'total_timesteps':1000000, 
+                                  'learning_rate':1e-3, 
+                                  'adaptive_lr':True, 
+                                  'desired_kl':2e-3},
+               rl_params = {'gamma':0.99, 
+                            'num_policy_update':1},
+               network_params = {'q_network':['fully_connected_network','large'], 
+                                 'value_network':['fully_connected_network','medium'], 
+                                 'policy_network':['fully_connected_network','medium']},
+               algorithm_params = {'number_of_suggestions':10,
+                                   'restore': True,
+                                   'DDQN':True, 
+                                   'std_dev':['fixed', 0.2], 
+                                   'experience_replay':'PER', 
+                                   'experience_replay_size':200000, 
+                                   'ER_batch_size':32, 
+                                   'PER_alpha':0.6, 
+                                   'PER_epsilon':0.01},
+               logs_path="/home/user/workspace/logs/",
+               )
+}
+
 # Parse the input arguments.
 def getInputArgs():
     parser = argparse.ArgumentParser('Learning Continous Control for OpenAI Roboschool')
     parser.add_argument('--phase', dest='phase', default='train', type=str, help='train or test')
+    parser.add_argument('--algorithm', dest='algorithm', default='A2S', type=str, help='algorithm name')
     args = parser.parse_args()
     return args
 
-def train(id, env_name, seed, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate, record):
+def train(agent_class, id, env_name, seed, record, data_collection_params, training_params, rl_params, network_params, algorithm_param, logs_path):
     env = gym.make(env_name)
     tf.set_random_seed(seed)
     np.random.seed(seed)
 
     with tf.Session() as sess:
-        agent = Agent(env, sess, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate)
+        agent = agent_class.Agent(env, sess, data_collection_params, training_params, rl_params, network_params, algorithm_param, logs_path)
         saver = tf.train.Saver()
         save_dir = "/home/user/workspace/agents/"+env_name+id
         try:
@@ -33,7 +83,7 @@ def train(id, env_name, seed, network_type, network_size, iterations, min_batch_
         agent.train(saver=saver, save_dir=save_dir+"/"+env_name+id+".ckpt")
         env.close()
 
-def test(id, env_name, seed, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate, record):
+def test(agent_class, id, env_name, seed, record, data_collection_params, training_params, rl_params, network_params, algorithm_param, logs_path):
     env = gym.make(env_name)
     save_dir = "/home/user/workspace/agents/"+env_name+id
     video_dir = "/home/user/workspace/videos/"+env_name+id
@@ -41,7 +91,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
         env = gym.wrappers.Monitor(env,video_dir,force=True)
 
     with tf.Session() as sess:
-        agent = Agent(env, sess, network_type, network_size, iterations, min_batch_size, lr, lr_schedule, gamma, animate)
+        agent = agent_class.Agent(env, sess, data_collection_params, training_params, rl_params, network_params, algorithm_param, logs_path)
         saver = tf.train.Saver()
         saver.restore(sess, save_dir+"/"+env_name+id+".ckpt")
         agent.update_to_best()
@@ -70,18 +120,7 @@ def test(id, env_name, seed, network_type, network_size, iterations, min_batch_s
 # Main code.
 if __name__ == "__main__":
     args = getInputArgs()
-    env_setting = dict(id="-5",
-                       env_name='RoboschoolHopper-v1',
-                       seed=2,
-                       network_type='fully_connected_network',
-                       network_size='medium',
-                       iterations=1000000,
-                       min_batch_size=300,
-                       lr=1e-3,
-                       lr_schedule='constant',
-                       gamma=0.99,
-                       animate=False,
-                       record=False)
+    env_setting = env_settings[args.algorithm]
     
     if args.phase == 'train':
         train(**env_setting)
