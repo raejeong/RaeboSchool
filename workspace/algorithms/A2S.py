@@ -506,7 +506,7 @@ class Agent:
               for sample in sample_batch:
                 # Update error for the sample batch 
                 q_value_estimate = self.compute_q(sample[1].observation, sample[1].action[None])
-                error = returns_batch[i,:][0] - q_value_estimate[0][0]
+                error = sample[1].return_ - q_value_estimate[0][0]
                 self.replay_buffer.update(sample[0], error)
 
         # Compute std dev
