@@ -1,6 +1,8 @@
 import numpy as np 
 import tensorflow as tf
 import scipy.signal
+import random
+import math
 
 def discount(x, gamma):
     """
@@ -41,8 +43,8 @@ class SumTree:
 
     def __init__(self, capacity):
         self.capacity = capacity
-        self.tree = numpy.zeros( 2*capacity - 1 )
-        self.data = numpy.zeros( capacity, dtype=object )
+        self.tree = np.zeros( 2*capacity - 1 )
+        self.data = np.zeros( capacity, dtype=object )
 
     def _propagate(self, idx, change):
         parent = (idx - 1) // 2
@@ -86,7 +88,6 @@ class SumTree:
     def get(self, s):
         idx = self._retrieve(0, s)
         dataIdx = idx - self.capacity + 1
-
         return (idx, self.tree[idx], self.data[dataIdx])
 
 class ExperienceReplayData:
@@ -105,11 +106,13 @@ class PrioritizedExperienceReplay:
         self.a = alpha
 
     def _getPriority(self, error):
-        return (error + self.e) ** self.a
+        return (np.abs(error) + self.e) ** self.a
 
     def add(self, error, sample):
         p = self._getPriority(error)
-        self.tree.add(p, sample) 
+        self.tree.add(p, sample)
+        while self.tree.data[-1]==0:
+            self.tree.add(p, sample)
 
     def sample(self, n):
         batch = []
@@ -137,11 +140,13 @@ class ExperienceReplay:
         self.tree = SumTree(capacity)
 
     def _getPriority(self, error):
-        return (error + self.e) ** self.a
+        return (np.abs(error) + self.e) ** self.a
 
-    def add(self, error, sample):
+    def add(self, sample, error=1.0):
         p = self._getPriority(error)
-        self.tree.add(p, sample) 
+        self.tree.add(p, sample)
+        while self.tree.data[-1]==0:
+            self.tree.add(p, sample)
 
     def sample(self, n):
         batch = []
