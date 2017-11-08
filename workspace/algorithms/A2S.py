@@ -333,6 +333,8 @@ class Agent:
     # Keeping track of the best averge reward
     best_average_reward = -np.inf
 
+    first = False
+
     ##### Training #####
     
     # Training iterations
@@ -348,8 +350,11 @@ class Agent:
       ##### Collect Batch #####
 
       # Collecting minium batch size or minimum episodes of experience
-      while episodes < self.data_collection_params['min_episodes'] or batch_size < self.data_collection_params['min_batch_size']:
+      while episodes < self.data_collection_params['min_episodes'] or batch_size < self.data_collection_params['min_batch_size'] or first:
         
+        if batch_size > 100000:
+          first = False
+
         # Restart env
         observation = self.env.reset()
         
@@ -443,10 +448,10 @@ class Agent:
 
         # Adaptive minimum episode size. Increase by episode_adapt_rate 
         self.data_collection_params['min_episodes'] += self.data_collection_params['episode_adapt_rate'] 
-        # self.algorithm_params['number_of_suggestions'] -= 1
+        self.algorithm_params['number_of_suggestions'] -= 1
 
-        # if self.algorithm_params['number_of_suggestions'] < 1:
-          # self.algorithm_params['number_of_suggestions'] = 1
+        if self.algorithm_params['number_of_suggestions'] < 1:
+          self.algorithm_params['number_of_suggestions'] = 1
 
         # Max episodes allowed per iteration
         # if self.data_collection_params['min_episodes'] > 8:
@@ -471,9 +476,9 @@ class Agent:
           if self.data_collection_params['min_episodes'] < 1:
             self.data_collection_params['min_episodes'] = 1
 
-          # self.algorithm_params['number_of_suggestions'] += 1
-          # if self.algorithm_params['number_of_suggestions'] > 6:
-            # self.algorithm_params['number_of_suggestions'] = 6
+          self.algorithm_params['number_of_suggestions'] += 1
+          if self.algorithm_params['number_of_suggestions'] > 6:
+            self.algorithm_params['number_of_suggestions'] = 6
         # Train with Experience Replay
         if self.algorithm_params['experience_replay'] is not None:
           for i in range(batch_size):
@@ -500,7 +505,7 @@ class Agent:
             returns_mini_batch = np.array(returns_mini_batch)
 
             # Training with sample batch
-            q_network_loss, _, value_network_loss, _ = self.sess.run([self.q_network_loss, self.train_q_network, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.returns:returns_mini_batch, self.learning_rate:learning_rate})
+            q_network_loss, _, value_network_loss, _ = self.sess.run([self.q_network_loss, self.train_q_network, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.returns:returns_mini_batch, self.learning_rate:learning_rate*10})
 
             if self.algorithm_params['experience_replay'] == 'PER':
               for sample in sample_batch:
@@ -522,28 +527,28 @@ class Agent:
           # Taking the gradient step to optimize Q network and the value network with the whole batch.
           q_network_loss, value_network_loss, _, _ = self.sess.run([self.q_network_loss, self.value_network_loss, self.train_value_network, self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.returns:returns_batch, self.learning_rate:learning_rate*10})
           
-          # Compute value and q value to calculate advantage
-          if self.algorithm_params['restore']:
-            q, v = self.sess.run([self.best_q_network.out, self.best_value_network.out], {self.observations:observations_batch, self.actions:actions_batch})          
-          else:
-            q, v = self.sess.run([self.current_q_network.out, self.current_value_network.out], {self.observations:observations_batch, self.actions:actions_batch})
-          # if self.algorithm_params['number_of_suggestions']!=1:          
-          #   advantages_batch = np.squeeze(q-v).reshape([-1,1])
-          # else:
-          advantages_batch = np.squeeze(returns_batch-np.mean(returns_batch)).reshape([-1,1])
-          # advantages_batch = np.squeeze(returns_batch-v).reshape([-1,1])
-          # print(np.mean(returns_batch-q))
-          
-          # if np.random.random() > 0.5:
-          #   advantages_batch = np.squeeze(returns_batch-v).reshape([-1,1])
-          # else:
-          # advantages_batch = np.squeeze(q-v).reshape([-1,1])
-          
-          # Taking the gradient step to optimize (train) the policy network.
-          policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate, self.average_reward:average_reward})
+        # Compute value and q value to calculate advantage
+        if self.algorithm_params['restore']:
+          q, v = self.sess.run([self.best_q_network.out, self.best_value_network.out], {self.observations:observations_batch, self.actions:actions_batch})          
+        else:
+          q, v = self.sess.run([self.current_q_network.out, self.current_value_network.out], {self.observations:observations_batch, self.actions:actions_batch})
+        # if self.algorithm_params['number_of_suggestions']!=1:          
+        advantages_batch = np.squeeze(q-v).reshape([-1,1])
+        # else:
+        # advantages_batch = np.squeeze(returns_batch-np.mean(returns_batch)).reshape([-1,1])
+        # advantages_batch = np.squeeze(returns_batch-v).reshape([-1,1])
+        # print(np.mean(returns_batch-q))
+        
+        # if np.random.random() > 0.5:
+        #   advantages_batch = np.squeeze(returns_batch-v).reshape([-1,1])
+        # else:
+        # advantages_batch = np.squeeze(q-v).reshape([-1,1])
+        
+        # Taking the gradient step to optimize (train) the policy network.
+        policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate, self.average_reward:average_reward})
 
-          # Get stats
-          summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate, self.average_reward:average_reward})
+        # Get stats
+        summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate, self.average_reward:average_reward})
                
         # Backup the current policy network to last policy network
         self.backup_current_policy_to_last_policy()
