@@ -1,7 +1,7 @@
 import numpy as np 
 import tensorflow as tf 
 import importlib
-from algorithms.utils import *
+from algorithms.utils.utils import *
 import itertools
 
 class ValueNetwork:
@@ -77,7 +77,7 @@ class ValueNetwork:
     
     # Compute and log loss for the value network
     self.value_network_loss = tf.reduce_mean(tf.squared_difference(self.current_value_network.out, self.returns))
-    tf.summary.scalar('value_network_loss', self.value_network_loss)
+    self.summary = tf.summary.scalar('value_network_loss', self.value_network_loss)
 
     ##### Optimization #####
     
@@ -99,14 +99,14 @@ class ValueNetwork:
     ##### Logging #####
 
     # Log useful information
-    self.summary = tf.summary.merge_all()
+    # self.summary = tf.summary.merge_all()
 
     # Initialize all tf variables
     self.sess.run(tf.global_variables_initializer())
 
   # Compute value of an observation
   def compute_value(self, observations):
-    values = self.sess.run([self.target_value_network.out],{self.observations: observations})
+    values = self.sess.run([self.target_value_network.out],{self.target_observations: observations})
     return values
   
   # target_update the target network
@@ -117,9 +117,12 @@ class ValueNetwork:
   def train(self, observations_batch, returns_batch):
     summaries = []
     losses = []
+    stats = {}
     # Training with batch
-    summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch})
     summaries.append(summary)
     losses.append(value_network_loss)
-      
-    return [summaries, losses]
+    stats['value_network_loss'] = np.mean(np.array(losses))
+    self.soft_target_update()
+
+    return [summaries, stats]

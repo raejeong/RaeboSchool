@@ -1,7 +1,7 @@
 import numpy as np 
 import tensorflow as tf 
 import importlib
-from algorithms.utils import *
+from algorithms.utils.utils import *
 import itertools
 
 class QNetwork:
@@ -64,7 +64,7 @@ class QNetwork:
     self.action_shape = self.env.action_space.shape[0]
 
     # Experience replay buffer
-    self.replay_buffer = PrioritizedExperienceReplay(self.algorithm_params['experience_replay_size'], self.algorithm_params['PER_epsilon'], self.algorithm_params['PER_alpha'])
+    self.replay_buffer = PrioritizedExperienceReplay(self.algorithm_params['PER_size'], self.algorithm_params['PER_epsilon'], self.algorithm_params['PER_alpha'])
 
     ##### Placeholders #####
     
@@ -72,7 +72,7 @@ class QNetwork:
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
     self.target_observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="target_observations")
     
-    # Placeholder for actions taken, this is used for the policy gradient
+    # Placeholder for actions
     self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
     self.target_actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="target_actions")
 
@@ -93,7 +93,7 @@ class QNetwork:
     self.current_q_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_q_network')
 
     # Target Q network, outputs Q value of target state action pair
-    self.target_q_network = self.q_network_class.Network(self.sess, self.next_state_action_pairs, 1, "target_q_network", self.network_params['network_size'])
+    self.target_q_network = self.q_network_class.Network(self.sess, self.target_state_action_pairs, 1, "target_q_network", self.network_params['network_size'])
     self.target_q_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_network')
     
     ##### Loss #####
@@ -140,12 +140,12 @@ class QNetwork:
   
   # Compute target Q value from current Q network
   def compute_target_q(self, observation, action):
-    q_value = self.sess.run([self.target_q_network.out],{self.observations: observation[None], self.actions:action})[0]
+    q_value = self.sess.run([self.target_q_network.out],{self.target_observations: observation[None], self.target_actions:action})[0]
     return q_value
 
   # Compute batch target Q value of observations and actions
   def compute_target_q_batch(self, observations, actions):
-    q_values = self.sess.run([self.target_q_network.out],{self.observations: observations, self.actions:actions})
+    q_values = self.sess.run([self.target_q_network.out],{self.target_observations: observations, self.target_actions:actions})
     return q_values
 
   # target_update the target networks
@@ -153,11 +153,11 @@ class QNetwork:
     _ = self.sess.run([self.target_update],{})
 
   # Add batch to replay buffer
-  def replay_buffer_add_batch(self, batch_size, observations_batch, actions_batch, y):
+  def replay_buffer_add_batch(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y):
     for i in range(batch_size):
       q_value_estimate = self.compute_q(observations_batch[i,:], actions_batch[i,:][None])
       error = y[i,:][0] - q_value_estimate[0][0]
-      sample_ER = ExperienceReplayData(observation=observations_batch[i,:], action=actions_batch[i,:], y=y, error=error)
+      sample_ER = ExperienceReplayData(observation=observations_batch[i,:], next_observation=next_observations_batch[i,:], action=actions_batch[i,:], y=y, error=error, reward=rewards_batch[i,:])
       self.replay_buffer.add(error, sample_ER)
 
   # Update batch to replay buffer
@@ -171,8 +171,8 @@ class QNetwork:
 
   def get_batches(self):
     batches = []
-    for i in range(self.algorithm_params['ER_iterations']):
-      sample_batch = self.replay_buffer.sample(self.algorithm_params['ER_batch_size'])
+    for i in range(self.algorithm_params['PER_iterations']):
+      sample_batch = self.replay_buffer.sample(self.algorithm_params['PER_batch_size'])
       batches.append(sample_batch)
     return batches
 
@@ -180,9 +180,10 @@ class QNetwork:
   def train(self, batches):
     summaries = []
     losses = []
+    stats = {}
     # Train with Experience Replay
     for sample_batch in batches:
-      observations_mini_batch, actions_mini_batch, rewards_mini_batch, y_mini_batch = [], [], [], []
+      observations_mini_batch, actions_mini_batch, rewards_mini_batch, next_observations_mini_batch,y_mini_batch = [], [], [], [], []
       for sample in sample_batch:
         # Build the mini batch from sample batch
         observations_mini_batch.append(sample[1].observation)
@@ -195,11 +196,14 @@ class QNetwork:
       next_observations_mini_batch = np.array(next_observations_mini_batch)
       actions_mini_batch = np.array(actions_mini_batch)
       rewards_mini_batch = np.array(rewards_mini_batch)
-      y_mini_batch = np.array(y_mini_batch)
+      y_mini_batch = np.array(y_mini_batch).reshape([-1,1])
 
       # Training with sample batch
-      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.next_observations:next_observations_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch})
       summaries.append(summary)
       losses.append(q_network_loss)
 
-    return [summaries, losses]
+    stats['q_network_loss'] = np.mean(np.array(losses))
+    self.soft_target_update()
+
+    return [summaries, stats]

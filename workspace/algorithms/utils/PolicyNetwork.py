@@ -1,7 +1,7 @@
 import numpy as np 
 import tensorflow as tf 
 import importlib
-from algorithms.utils import *
+from algorithms.utils.utils import *
 import itertools
 
 class PolicyNetwork:
@@ -58,12 +58,17 @@ class PolicyNetwork:
     
     # Placeholder for observations
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
-
+    
+    # Placeholder for actions taken, this is used for the policy gradient
+    self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
+    
     # Placeholder for target observations
     self.target_observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="target_observations")
             
     # Placeholder for the advantage function
     self.advantages = tf.placeholder(tf.float32, shape=[None, 1], name="advantages") 
+
+    self.average_advantage = tf.reduce_mean(self.advantages)
     
     ##### Networks #####
       
@@ -74,16 +79,16 @@ class PolicyNetwork:
       policy_output_shape = self.action_shape
 
     # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be target_updated from the back up policy. 
-    self.current_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['policy_network'][1])
+    self.current_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['network_size'])
     self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_policy_network')
 
     # Backup of the target policy network so far, backs up the target policy in case the update is bad. outputs the mean for the action
-    self.target_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "target_policy_network", self.network_params['policy_network'][1])
+    self.target_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "target_policy_network", self.network_params['network_size'])
     self.target_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_policy_network')
 
     # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
-    self.last_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['policy_network'][1])
-      self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
+    self.last_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['network_size'])
+    self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
     ##### Policy Action Probability #####
       
@@ -109,7 +114,7 @@ class PolicyNetwork:
     
     # Compute and log the KL divergence from last policy distribution to the current policy distribution
     self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.current_gaussian_policy_distribution, self.last_gaussian_policy_distribution))
-    tf.summary.scalar('kl', self.kl)
+    # tf.summary.scalar('kl', self.kl)
     
     # Action suggested by the current policy network
     number_of_suggestions = self.algorithm_params['number_of_suggestions']
@@ -121,7 +126,7 @@ class PolicyNetwork:
     self.negative_log_prob = -self.current_gaussian_policy_distribution.log_prob(self.actions)
     self.policy_network_losses = self.negative_log_prob*self.advantages # be careful with this operation, it should be element wise not matmul!
     self.policy_network_loss = tf.reduce_mean(self.policy_network_losses)
-    tf.summary.scalar('policy_network_loss', self.policy_network_loss)
+    self.summary = tf.summary.scalar('policy_network_loss', self.policy_network_loss)
 
     ##### Optimization #####
     
@@ -149,7 +154,7 @@ class PolicyNetwork:
     ##### Logging #####
 
     # Log useful information
-    self.summary = tf.summary.merge_all()
+    # self.summary = tf.summary.merge_all()
 
     # Initialize all tf variables
     self.sess.run(tf.global_variables_initializer())
@@ -181,10 +186,10 @@ class PolicyNetwork:
     stats = {}
 
     # Taking the gradient step to optimize (train) the policy network.
-    policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.returns:returns_batch, self.learning_rate:learning_rate})
+    policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
 
     # Get stats
-    summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:learning_rate})
+    summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
            
     # Backup the current policy network to last policy network
     self.update_last_policy()
@@ -198,5 +203,7 @@ class PolicyNetwork:
     stats['policy_network_loss'] = policy_network_loss
     stats['kl'] = kl
     stats['average_advantage'] = average_advantage
-      
-    return [summaries, stats
+
+    self.soft_target_update()
+ 
+    return [summaries, stats]

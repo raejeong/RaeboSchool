@@ -97,7 +97,7 @@ class ExperienceReplayData:
         self.next_observation = next_observation
         self.action = action
         self.return_ = return_
-        self.reward = next_observation
+        self.reward = reward
         self.error = error
         self.y = y
 
