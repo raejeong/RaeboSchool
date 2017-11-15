@@ -16,5 +16,4 @@ class Network:
 				# out = tf.tanh(out)
 				out = lrelu(out)
 			out = dense(out, out_shape, name+"/out", initializer=tf.random_uniform_initializer(-0.1,0.1))
-			out = tf.tanh(out)
 		self.out = out
