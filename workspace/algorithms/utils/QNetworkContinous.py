@@ -67,6 +67,9 @@ class QNetwork:
     self.replay_buffer = PrioritizedExperienceReplay(self.algorithm_params['PER_size'], self.algorithm_params['PER_epsilon'], self.algorithm_params['PER_alpha'])
 
     ##### Placeholders #####
+
+    # placeholder for learning rate for the optimizer
+    self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
     
     # Placeholder for observations and next observations
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
@@ -106,7 +109,7 @@ class QNetwork:
     ##### Optimization #####
     
     # Optimizers for the network
-    self.q_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.algorithm_params['learning_rate'])
+    self.q_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
     # Training operation for the network
     self.train_q_network = self.q_network_optimizer.minimize(self.q_network_loss)
@@ -177,7 +180,8 @@ class QNetwork:
     return batches
 
   # Train the Q network from the given batches
-  def train(self, batches):
+  def train(self, batches, learning_rate):
+    self.algorithm_params['learning_rate'] = 10*learning_rate
     summaries = []
     losses = []
     stats = {}
@@ -199,9 +203,11 @@ class QNetwork:
       y_mini_batch = np.array(y_mini_batch).reshape([-1,1])
 
       # Training with sample batch
-      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch})
+      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(q_network_loss)
+      if np.mean(np.array(losses)) < 10:
+        break
 
     stats['q_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()

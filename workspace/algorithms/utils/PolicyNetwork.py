@@ -55,15 +55,15 @@ class PolicyNetwork:
     self.action_shape = self.env.action_space.shape[0]
 
     ##### Placeholders #####
+
+    # placeholder for learning rate for the optimizer
+    self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
     
     # Placeholder for observations
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
     
     # Placeholder for actions taken, this is used for the policy gradient
     self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
-    
-    # Placeholder for target observations
-    self.target_observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="target_observations")
             
     # Placeholder for the advantage function
     self.advantages = tf.placeholder(tf.float32, shape=[None, 1], name="advantages") 
@@ -79,15 +79,15 @@ class PolicyNetwork:
       policy_output_shape = self.action_shape
 
     # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be target_updated from the back up policy. 
-    self.current_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['network_size'])
+    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['network_size'])
     self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_policy_network')
 
     # Backup of the target policy network so far, backs up the target policy in case the update is bad. outputs the mean for the action
-    self.target_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "target_policy_network", self.network_params['network_size'])
+    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "target_policy_network", self.network_params['network_size'])
     self.target_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_policy_network')
 
     # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
-    self.last_policy_network = self.policy_network_class.Network(sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['network_size'])
+    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['network_size'])
     self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
     ##### Policy Action Probability #####
@@ -120,6 +120,8 @@ class PolicyNetwork:
     number_of_suggestions = self.algorithm_params['number_of_suggestions']
     self.suggested_actions_out = tf.reshape(self.target_gaussian_policy_distribution._sample_n(number_of_suggestions),[-1,number_of_suggestions,self.action_shape])
 
+    self.actions_out = tf.reshape(self.target_gaussian_policy_distribution._sample_n(1),[-1,self.action_shape])
+
     ##### Loss #####
     
     # Compute and log loss for policy network
@@ -131,7 +133,7 @@ class PolicyNetwork:
     ##### Optimization #####
     
     # Optimizers for the network
-    self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.algorithm_params['learning_rate'])
+    self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
     # Training operation for the network
     self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
@@ -139,10 +141,15 @@ class PolicyNetwork:
     ##### Target Update #####
     
     # Soft target update operations for the policy network
+    # self.target_update = []
+    # tau = self.algorithm_params['target_update_rate']
+    # for var, var_target in zip(sorted(self.current_policy_network_vars,key=lambda v: v.name),sorted(self.target_policy_network_vars, key=lambda v: v.name)):
+    #  self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
+    # self.target_update = tf.group(*self.target_update)
+
     self.target_update = []
-    tau = self.algorithm_params['target_update_rate']
     for var, var_target in zip(sorted(self.current_policy_network_vars,key=lambda v: v.name),sorted(self.target_policy_network_vars, key=lambda v: v.name)):
-     self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
+      self.target_update.append(var_target.assign(var))
     self.target_update = tf.group(*self.target_update)
 
     # Copy over the current policy network to last policy network for KL divergence Calculation
@@ -157,7 +164,7 @@ class PolicyNetwork:
     # self.summary = tf.summary.merge_all()
 
     # Initialize all tf variables
-    self.sess.run(tf.global_variables_initializer())
+    # self.sess.run(tf.global_variables_initializer())
 
   # Compute suggested actions from observation
   def compute_suggested_actions(self, observation):
@@ -169,7 +176,7 @@ class PolicyNetwork:
 
   # Compute suggested actions from observation
   def compute_action(self, observation):
-    action = self.sess.run([self.target_policy_network.out], {self.observations: observation[None]})
+    action = self.sess.run([self.actions_out], {self.observations: observation[None]})[0]
     return action
   
   # update the target network
@@ -181,16 +188,17 @@ class PolicyNetwork:
     _ = self.sess.run([self.update_last],{})
 
   # Train the Q network from the given batches
-  def train(self, observations_batch, advantages_batch, actions_batch):
+  def train(self, observations_batch, advantages_batch, actions_batch, learning_rate):
+    self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     stats = {}
 
     # Taking the gradient step to optimize (train) the policy network.
-    policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
+    policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate']})
 
     # Get stats
     summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
-           
+
     # Backup the current policy network to last policy network
     self.update_last_policy()
     

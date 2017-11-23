@@ -53,6 +53,9 @@ class ValueNetwork:
     self.action_shape = self.env.action_space.shape[0]
 
     ##### Placeholders #####
+
+    # placeholder for learning rate for the optimizer
+    self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
     
     # Placeholder for observations and next observations
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
@@ -82,7 +85,7 @@ class ValueNetwork:
     ##### Optimization #####
     
     # Optimizers for the network
-    self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.algorithm_params['learning_rate'])
+    self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
     # Training operation for the network
     self.train_value_network = self.value_network_optimizer.minimize(self.value_network_loss)
@@ -90,10 +93,15 @@ class ValueNetwork:
     ##### Target Update #####
     
     # Soft target update operations for the Q network
+    # self.target_update = []
+    # tau = self.algorithm_params['target_update_rate']
+    # for var, var_target in zip(sorted(self.current_value_network_vars,key=lambda v: v.name),sorted(self.target_value_network_vars, key=lambda v: v.name)):
+    #  self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
+    # self.target_update = tf.group(*self.target_update)
+
     self.target_update = []
-    tau = self.algorithm_params['target_update_rate']
     for var, var_target in zip(sorted(self.current_value_network_vars,key=lambda v: v.name),sorted(self.target_value_network_vars, key=lambda v: v.name)):
-     self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
+      self.target_update.append(var_target.assign(var))
     self.target_update = tf.group(*self.target_update)
 
     ##### Logging #####
@@ -102,7 +110,7 @@ class ValueNetwork:
     # self.summary = tf.summary.merge_all()
 
     # Initialize all tf variables
-    self.sess.run(tf.global_variables_initializer())
+    # self.sess.run(tf.global_variables_initializer())
 
   # Compute value of an observation
   def compute_value(self, observations):
@@ -114,14 +122,16 @@ class ValueNetwork:
     _ = self.sess.run([self.target_update],{})
 
   # Train the Q network from the given batches
-  def train(self, observations_batch, returns_batch):
+  def train(self, observations_batch, returns_batch, learning_rate):
+    self.algorithm_params['learning_rate'] = 10*learning_rate
     summaries = []
     losses = []
     stats = {}
-    # Training with batch
-    summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch})
-    summaries.append(summary)
-    losses.append(value_network_loss)
+    for i in range(300):
+      # Training with batch
+      summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      summaries.append(summary)
+      losses.append(value_network_loss)
     stats['value_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()
 

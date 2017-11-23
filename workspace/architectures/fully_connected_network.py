@@ -13,7 +13,7 @@ class Network:
 					break
 				out = dense(out, network_param[i], name+"/fc"+str(i))
 				out = tf.contrib.layers.layer_norm(out)
-				# out = tf.tanh(out)
-				out = lrelu(out)
+				out = tf.tanh(out)
+				# out = lrelu(out)
 			out = dense(out, out_shape, name+"/out", initializer=tf.random_uniform_initializer(-0.1,0.1))
 		self.out = out

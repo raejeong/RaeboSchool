@@ -55,22 +55,22 @@ class Agent:
                env,
                sess,
                data_collection_params = {'min_batch_size':1000,
-                                         'min_episodes':1, 
+                                         'min_episodes':3, 
                                          'episode_adapt_rate':3},
                training_params = {'total_timesteps':1000000,  
                                   'adaptive_lr':True, 
-                                  'desired_kl':2e-3},
+                                  'desired_kl':6e-3},
                network_params = {'q_network':['fully_connected_network','large'], 
                                  'value_network':['fully_connected_network','large'], 
                                  'policy_network':['fully_connected_network','large']},
                algorithm_params = {'gamma':0.99, 
                                    'learning_rate':1e-3,
-                                   'number_of_suggestions':10, 
-                                   'q_target_estimate_iteration':30,
+                                   'number_of_suggestions':5, 
+                                   'q_target_estimate_iteration':10,
                                    'std_dev':['fixed', 0.2], 
-                                   'PER_size':200000, 
-                                   'PER_batch_size':32, 
-                                   'PER_iterations':300,
+                                   'PER_size':50000, 
+                                   'PER_batch_size':64, 
+                                   'PER_iterations':100,
                                    'PER_alpha':0.6, 
                                    'PER_epsilon':0.01,
                                    'target_update_rate':0.001},
@@ -158,19 +158,18 @@ class Agent:
       
       ##### Optimization #####
 
-      q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch)
+      q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate)
       q_network_loss = q_stats['q_network_loss']
       self.add_summaries(q_summaries, total_timesteps)
 
-      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch)
+      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
       value_network_loss = value_stats['value_network_loss']
       self.add_summaries(value_summaries, total_timesteps)
 
-      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch)
+      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
       policy_network_loss = policy_stats['policy_network_loss']
       kl = policy_stats['kl']
       average_advantage = policy_stats['average_advantage']
-      
       self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size)
 
     self.writer.close()
@@ -313,12 +312,12 @@ class Agent:
     return learning_rate
     
   # Train Q Network
-  def train_q_network(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch):
+  def train_q_network(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate):
     y = self.compute_q_network_y_batch(batch_size, rewards_batch, next_observations_batch)
     self.q_network.replay_buffer_add_batch(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y)
     batches = self.q_network.get_batches()
     batches = self.update_q_batches(batches)
-    summaries, stats = self.q_network.train(batches)
+    summaries, stats = self.q_network.train(batches, learning_rate)
     batches = self.update_q_batches(batches)
     self.q_network.replay_buffer_update_batch(batches)
     return [summaries, stats]
@@ -376,13 +375,13 @@ class Agent:
       self.writer.add_summary(summary, timestep)
 
   # Train value network
-  def train_value_network(self, observations_batch, returns_batch):
-    summaries, stats = self.value_network.train(observations_batch, returns_batch)
+  def train_value_network(self, observations_batch, returns_batch, learning_rate):
+    summaries, stats = self.value_network.train(observations_batch, returns_batch, learning_rate)
     return [summaries, stats]
 
   # Train policy network
-  def train_policy_network(self, observations_batch, actions_batch, advantages_batch):
-    summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch)
+  def train_policy_network(self, observations_batch, actions_batch, advantages_batch, learning_rate):
+    summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
     return [summaries, stats]
 
   # Print stats
@@ -391,6 +390,6 @@ class Agent:
       
     # Printing performance progress and other useful infromation
     print("_______________________________________________________________________________________________________________________________________________________________________________________________________________")
-    print("{:>15} {:>15} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20} {:>20} {:>10} {:>15}".format("total_timesteps", "episodes", "target_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "q_network_loss", "average_advantage", "lr", "batch_size"))
+    print("{:>15} {:>15} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20} {:>20} {:>10} {:>15}".format("total_timesteps", "episodes", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "q_network_loss", "average_advantage", "lr", "batch_size"))
     print("{:>15} {:>15} {:>15.2f} {:>15.2f} {:>20.5E} {:>20.2f} {:>20.2f} {:>20.2f} {:>20.2f} {:>10.2E} {:>15}".format(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size))
 

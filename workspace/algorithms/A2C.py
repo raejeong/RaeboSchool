@@ -1,12 +1,46 @@
 import numpy as np 
 import tensorflow as tf 
 import importlib
-from algorithms.utils import *
+from algorithms.utils.utils import *
+from algorithms.utils.PolicyNetwork import PolicyNetwork
+from algorithms.utils.ValueNetwork import ValueNetwork
+
 import itertools
 
 class Agent:
   """
-  Advantage Actor Critic Algorithm
+  Advantage Actor Suggestor Algorithm
+
+  Note:
+    Implementation of Adavantage Actor Suggestor algorithm as proposed in ###
+  
+  Args: 
+    env: OpenAI environment object
+    
+    sess: TensorFlow Session object
+    
+    data_collection_params (dict): Parameters for data collection / interacting with the environment
+      'min_batch_size' (int): Minimum batch size for interacting with the environment
+      'min_episodes' (int): Minimum episodes to interact with the environment per batch 
+      'episode_adapt_rate' (int): amount to increase or decrease for min_epidoes
+    
+    training_params (dict): Parameters for training
+      'total_timesteps' (int): Total time steps to train for 
+      'adaptive_lr' (bool): Use adaptive learning rate based on the desired kl divergence between current and last policy 
+      'desired_kl' (double): Desired kl divergence for adaptive learning rate
+    
+    network_params (dict): Parameters to define the network used
+      'value_network' (list): Defines the value network e.g. ['fully_connected_network','small/medium/large'] 
+      'policy_network' (list): Defines the policy network e.g. ['fully_connected_network','small/medium/large'] 
+    
+    algorithm_params (dict): Parameters specific to the algorithm 
+      'gamma' (double): discount rate 
+      'learning_rate' (double): Learning rate for gradient updates 
+      'std_dev' (list): Different ways to define the standard devation of the policy e.g. ['fixed'/'linear'/'network', (double)/(double)/-] NOTE: network option has the policy network to output the std dev 
+      'target_update_rate' (double): Rate to perform the soft updates for the networks
+               
+    logs_path (string): Path to save training logs
+
   """
   def __init__(self,
                env,
@@ -14,270 +48,262 @@ class Agent:
                data_collection_params = {'min_batch_size':1000,
                                          'min_episodes':1, 
                                          'episode_adapt_rate':3},
-               training_params = {'total_timesteps':1000000, 
-                                  'learning_rate':1e-3, 
+               training_params = {'total_timesteps':1000000,  
                                   'adaptive_lr':True, 
                                   'desired_kl':2e-3},
-               rl_params = {'gamma':0.99, 
-                            'num_policy_update':1},
-               network_params = {'value_network':['fully_connected_network','medium'], 
-                                 'policy_network':['fully_connected_network','medium']},
-               algorithm_params = {'restore': True,
-                                   'std_dev':['fixed', 0.2]},
+               network_params = {'value_network':['fully_connected_network','large'], 
+                                 'policy_network':['fully_connected_network','large']},
+               algorithm_params = {'gamma':0.99, 
+                                   'learning_rate':1e-3,
+                                   'std_dev':['fixed', 0.2], 
+                                   'target_update_rate':0.001},
                logs_path="/home/user/workspace/logs/"):
-    network_type='fully_connected_network'
-    network_size='small'
-    iterations=500
-    min_batch_size=1000
-    lr=1e-3
-    lr_schedule='constant'
-    gamma=0.99
-    animate=False
-    #
+
     # Tensorflow Session
     self.sess = sess
-    #
+    
     # OpenAI Environment
     self.env = env
-    #
-    # Hyper Parameters
-    self.learning_rate_scheduler = Scheduler(v=lr, nvalues=iterations*2, schedule=lr_schedule)
-    self.iterations = iterations
-    self.min_batch_size = min_batch_size
-    self.gamma = gamma
-    #
-    # animate the environment while training
-    self.animate = animate
-    #
-    # importing the desired network architecture
-    self.network_class = importlib.import_module("architectures."+network_type)
-    #
-    # getting the shape of observation space and action space of the environment
+
+    # Getting the shape of observation space and action space of the environment
     self.observation_shape = self.env.observation_space.shape[0]
     self.action_shape = self.env.action_space.shape[0]
-    #
-    # scoping variables with A2C
-    with tf.variable_scope("A2C"):
-      #
-      ##### Placeholders #####
-      #
-      # placeholder for observation
-      self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
-      #
-      # placeholder for actions taken, this is used for the policy gradient
-      self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
-      #
-      # placeholder for the advantage function
-      self.advantages = tf.placeholder(tf.float32, shape=[None, 1], name="advantages")
-      #
-      # placeholder for the r + gamma*next_value
-      self.target_values = tf.placeholder(tf.float32, shape=[None, 1], name="target_values")
-      #
-      # placeholder for learning rate for the optimizer
-      self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
-      #
-      # mean and the stddev of the old policy distrubution for KL calculation
-      self.mean_policy_old = tf.placeholder(tf.float32, name="mean_policy_old")
-      self.stddev_policy_old = tf.placeholder(tf.float32, name="stddev_policy_old")
-      #
-      ##### Networks #####
-      #
-      # policy network, outputs the mean and the stddev (needs to go through softplus) for the action
-      self.policy_network = self.network_class.Network(sess, self.observations, self.action_shape*2, "policy_network", network_size)
-      #
-      # value network, outputs value of observation, used for advantage estimate
-      self.value_network = self.network_class.Network(sess, self.observations, 1, "value_network", network_size)
-      #
-      ##### Policy Action Probability #####
-      #
-      # isolating the mean outputted by the policy network
-      self.mean_policy = tf.reshape(tf.squeeze(self.policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
-      #
-      # isolating the stddev outputted by the policy network, softplus is used to make sure that the stddev is positive
-      self.stddev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
-      #
-      # gaussian distribution is built with mean and stddev from the policy network
-      self.gaussian_policy_distribution = tf.contrib.distributions.Normal(self.mean_policy, self.stddev_policy)
-      #
-      # gaussian distribution is built with mean and stddev from the old policy network
-      self.gaussian_policy_distribution_old = tf.contrib.distributions.Normal(self.mean_policy_old, self.stddev_policy_old)
-      #
-      # KL divergence from old policy distribution to the new policy distribution
-      self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.gaussian_policy_distribution, self.gaussian_policy_distribution_old))
-      #
-      # action sampled from the gaussian distribution of the policy network
-      self.action_sampled = self.gaussian_policy_distribution._sample_n(1)
-      #
-      ##### Loss #####
-      #
-      # loss for the policy network and value network
-      self.negative_log_prob = -self.gaussian_policy_distribution.log_prob(self.actions)
-      self.policy_network_losses = self.negative_log_prob*self.advantages # be careful with this operation, it should be element wise not matmul!
-      self.policy_network_loss = tf.reduce_mean(self.policy_network_losses)
-      self.value_network_loss = tf.reduce_mean(tf.squared_difference(self.value_network.out, self.target_values))
-      #
-      ##### Optimization #####
-      #
-      # optimizer for the policy network and value network
-      self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-      self.value_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate*10)
-      #
-      # training operation for the policy network and value network
-      self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
-      self.train_value_network = self.value_network_optimizer.minimize(self.value_network_loss)
-    #
-    # initialize all tf variables
+    
+    # Hyper Parameters
+    self.data_collection_params = data_collection_params
+    self.training_params = training_params
+    self.network_params = network_params
+    self.algorithm_params = algorithm_params
+
+    # Hyper Paramters for Networks
+    value_network_params = {'network_type':self.network_params['value_network'][0], 'network_size':self.network_params['value_network'][1]}
+    policy_network_params = {'network_type':self.network_params['policy_network'][0], 'network_size':self.network_params['policy_network'][1]}
+
+    # Path to save training logs
+    self.logs_path = logs_path
+    
+    ##### Networks #####
+
+    self.value_network = ValueNetwork(self.env, self.sess, value_network_params, self.algorithm_params)
+    self.policy_network = PolicyNetwork(self.env, self.sess, policy_network_params, self.algorithm_params)
+
+    ##### Logging #####
+
+    # Placeholder for average reward for logging
+    self.average_reward = tf.placeholder(tf.float32, name="average_reward")
+    
+    # Log useful information
+    self.reward_summary = tf.summary.scalar("average_reward", self.average_reward)
+
+    # Setup the tf summary writer and initialize all tf variables
+    self.writer = tf.summary.FileWriter(logs_path, sess.graph)
     self.sess.run(tf.global_variables_initializer())
-
-  # samples action from the current policy network
-  def compute_action(self, observation):
-    return self.sess.run(self.action_sampled, {self.observations: observation[None]})[0]
-
-  # computes the value for a given observation
-  def compute_value(self, observations):
-    return self.sess.run(self.value_network.out, {self.observations: observations})
 
   # Collecting experience (data) and training the agent (networks)
   def train(self, saver=None, save_dir=None):
-    #
-    # keeping count of total timesteps of environment experience
+    
+    # Keeping count of total timesteps and episodes of environment experience for stats
     total_timesteps = 0
-    #
-    # sum of rewards of 100 episodes, not for learning, just a performance metric and logging
-    trajectory_rewards = []
-    #
-    # kl divergence, used to adjust the learning rate
+    total_episodes = 0
+    
+    # KL divergence, used to adjust the learning rate
     kl = 0
-    #
-    # keeping track of the best averge reward
+    
+    # Keeping track of the best averge reward
     best_average_reward = -np.inf
-    #
+
     ##### Training #####
-    #
-    # training iterations
-    for iteration in range(self.iterations):
-      #
-      # batch size changes from episode to episode
-      batch_size = 0
-      trajectories, returns, advantages = [], [], []
-      #
-      ##### Collect Batch #####
-      #
-      # collecting minium batch size of experience
-      while batch_size < self.min_batch_size:
-        #
-        # restart env
-        observation = self.env.reset()
-        #
-        # data for this episode
-        observations, actions, rewards = [], [], []
-        #
-        # flag that env is in terminal state
-        done = False
-        #
-        ##### Episode #####
-        #
-        while not done:
-          #
-          # animate every 10 iterations
-          if len(trajectories)==0 and (iteration%10==0) and self.animate:
-            self.env.render()
-          #
-          # collect the observation
-          observations.append(observation)
-          #
-          # sample action with current policy
-          action = self.compute_action(observation)
-          #
-          # for single dimension actions, wrap it in np array
-          if not isinstance(action, (list, tuple, np.ndarray)):
-            action = np.array([action])
-          action = np.concatenate(action)
-          #
-          # take action in environment
-          observation, reward, done, _ = self.env.step(action)
-          #
-          # collect reward and action
-          rewards.append(reward)
-          actions.append(action)
-        #
-        ##### Data Appending #####
-        #
-        # keeping trajectory_rewards as fifo of 100
-        if len(trajectory_rewards) > 100:
-          trajectory_rewards.pop(0)
-        #
-        # get sum of reward for this episode
-        trajectory_rewards.append(np.sum(rewards))
-        #
-        # add timesteps of this episode to batch_size
-        batch_size += len(rewards)
-        #
-        # episode trajectory
-        trajectory = {"observations":np.array(observations), "actions":np.array(actions), "rewards":np.array(rewards)}
-        trajectories.append(trajectory)
-        #
-        # computing the discounted return for this episode (NOT A SINGLE NUMBER, FOR EACH OBSERVATION)
-        return_ = discount(trajectory["rewards"], self.gamma)
-        #
-        # compute the value estimates for the observations seen during this episode
-        values = self.compute_value(observations)
-        #
-        # computing the advantage estimate
-        advantage = return_ - np.concatenate(values)
-        returns.append(return_)
-        advantages.append(advantage)
-      #
-      ##### Data Prep #####
-      #
-      # total timesteps is sum of all batch size
+    
+    # Training iterations
+    while total_timesteps < self.training_params['total_timesteps']:
+
+      # Collect batch of data
+      trajectories, returns, undiscounted_returns, advantages, batch_size, episodes = self.collect_trajs(total_timesteps)
+      observations_batch, actions_batch, rewards_batch, returns_batch, next_observations_batch, advantages_batch = self.traj_to_batch(trajectories, returns, advantages) 
+
+      # update total timesteps and total episodes
       total_timesteps += batch_size
-      #
-      # observations for this batch
-      observations_batch = np.concatenate([trajectory["observations"] for trajectory in trajectories])
-      #
-      # actions for this batch, reshapeing to handel 1D action space
-      actions_batch = np.concatenate([trajectory["actions"] for trajectory in trajectories]).reshape([-1,self.action_shape])
-      #
-      # advantages for this batch. itertool used to make batch into long np array
-      advantages_batch = np.array(list(itertools.chain.from_iterable(advantages))).flatten().reshape([-1,1])
-      #
-      # discounted returns for this batch. itertool used to make batch into long np array
-      returns_batch = np.array(list(itertools.chain.from_iterable(returns))).reshape([-1,1])
-      #
-      # learning rate calculated from scheduler
-      learning_rate = self.learning_rate_scheduler.value()
-      #
-      # adjusting the learning rate based on KL divergence
-      if kl > 2e-3 * 2: 
-        learning_rate /= 1.5
-      elif kl < 2e-3 / 2: 
-        learning_rate *= 1.5
-      #
-      ##### Optimization #####
-      #
-      # Taking the gradient step to optimize (train) the policy network (actor) and the value network (critic). mean and stddev is computed for kl divergence in the next step
-      policy_network_losses, policy_network_loss, value_network_loss, mean_policy_old, stddev_policy_old, _, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.value_network_loss, self.mean_policy, self.stddev_policy, self.train_policy_network, self.train_value_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.target_values:returns_batch, self.learning_rate:learning_rate})
-      #
-      # shape of the policy_network_losses is check since its common to have nonsense size due to unintentional matmul instead of non element wise multiplication. Action dimension and advantage dimension are very important and hard to debug when not correct
-      if isinstance(policy_network_losses, list):
-        policy_network_losses = policy_network_losses[0]
-      assert policy_network_losses.shape==actions_batch.shape, "Dimensions mismatch. Policy Distribution is incorrect! " + str(policy_network_losses.shape)
-      #
-      # kl divergence computed
-      kl = self.sess.run([self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.mean_policy_old:mean_policy_old, self.stddev_policy_old:stddev_policy_old})[0]
-      #
-      ##### Reporting Performance #####
-      #
-      # average reward of past 100 episodes
-      average_reward = np.mean(trajectory_rewards[-100:])
-      #
-      # update best average reward and save only if this is the best performing network so far
+      total_episodes += episodes
+      
+      # Learning rate adaptation
+      learning_rate = self.update_lr(kl)
+
+      # Average undiscounted return for the last data collection
+      average_reward = np.mean(undiscounted_returns)
+      
+      # Save the best model
       if average_reward > best_average_reward:
-        best_average_reward = average_reward
+        # Save the model
+        best_average_reward = average_reward     
         saver.save(self.sess, save_dir)
-      #
-      # Printing performance progress and other useful infromation
-      print("______________________________________________________________________________________________________________________________________________________")
-      print("{:>15} {:>10} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20}".format("total_timesteps", "iteration", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "average_stddev"))
-      print("{:>15} {:>10} {:>15.2f} {:>15.2f} {:>20.5f} {:>20.2f} {:>20.2f} {:>20.2f}".format(total_timesteps, iteration, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, np.mean(stddev_policy_old)))
+      
+      ##### Optimization #####
+
+      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
+      value_network_loss = value_stats['value_network_loss']
+      self.add_summaries(value_summaries, total_timesteps)
+
+      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
+      policy_network_loss = policy_stats['policy_network_loss']
+      kl = policy_stats['kl']
+      average_advantage = policy_stats['average_advantage']
+      
+      self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size)
+
+    self.writer.close()
+
+  ##### Helper Functions #####
+  
+  # Collect trajectores
+  def collect_trajs(self, total_timesteps):
+    # Batch size and episodes experienced in current iteration
+    batch_size = 0
+    episodes = 0
+
+    # Lists to collect data
+    trajectories, returns, undiscounted_returns, advantages = [], [], [], []
+
+    ##### Collect Batch #####
+
+    # Collecting minium batch size or minimum episodes of experience
+    while episodes < self.data_collection_params['min_episodes'] or batch_size < self.data_collection_params['min_batch_size']:
+                      
+      ##### Episode #####
+      
+      # Run one episode
+      observations, actions, rewards, dones = self.run_one_episode()
+
+      ##### Data Appending #####
+      
+      # Get sum of reward for this episode
+      undiscounted_returns.append(np.sum(rewards))
+
+      # Update the counters
+      batch_size += len(rewards)
+      total_timesteps += len(rewards)
+      episodes += 1
+
+      self.log_rewards(np.sum(rewards), total_timesteps)
+
+      # Episode trajectory
+      trajectory = {"observations":np.array(observations), "actions":np.array(actions), "rewards":np.array(rewards), "dones":np.array(dones)}
+      trajectories.append(trajectory)
+      
+      # Computing the discounted return for this episode (NOT A SINGLE NUMBER, FOR EACH OBSERVATION)
+      return_ = discount(trajectory["rewards"], self.algorithm_params['gamma'])
+
+      # Compute the value estimates for the observations seen during this episode
+      values = self.value_network.compute_value(observations)
+      
+      # Computing the advantage estimate
+      advantage = return_ - np.concatenate(values[0])
+      returns.append(return_)
+      advantages.append(advantage)
+
+    return [trajectories, returns, undiscounted_returns, advantages, batch_size, episodes]
+
+  # Run one episode
+  def run_one_episode(self):
+
+    # Restart env
+    observation = self.env.reset()
+    
+    # Flag that env is in terminal state
+    done = False
+
+    observations, actions, rewards, dones = [], [], [], []
+    while not done:
+      # Collect the observation
+      observations.append(observation)
+
+      # Sample action with current policy
+      action = self.compute_action(observation)
+
+      # For single dimension actions, wrap it in np array
+      if not isinstance(action, (list, tuple, np.ndarray)):
+        action = np.array([action])
+      action = np.concatenate(action)
+
+      # Take action in environment
+      observation, reward, done, _ = self.env.step(action)
+
+      # Collect reward and action
+      rewards.append(reward)
+      actions.append(action)
+      dones.append(done)
+
+    return [observations, actions, rewards, dones]
+
+  # Compute action using policy network
+  def compute_action(self, observation):
+    action = self.policy_network.compute_action(observation)
+    return action
+  
+  # Log rewards
+  def log_rewards(self, rewards, timestep):
+    reward_summary = self.sess.run([self.reward_summary], {self.average_reward:np.sum(rewards)})[0]
+    self.writer.add_summary(reward_summary, timestep)
+  
+  # Convert trajectories to batches
+  def traj_to_batch(self, trajectories, returns, advantages):
+    ##### Data Prep #####
+      
+    # Observations for this batch
+    observations_batch = np.concatenate([trajectory["observations"] for trajectory in trajectories])
+    next_observations_batch = np.roll(observations_batch, 1, axis=0)
+    next_observations_batch[0,:] = observations_batch[0,:]
+    
+    # Actions for this batch, reshapeing to handel 1D action space
+    actions_batch = np.concatenate([trajectory["actions"] for trajectory in trajectories]).reshape([-1,self.action_shape])
+    
+    # Rewards of the trajectory as a batch
+    rewards_batch = np.concatenate([trajectory["rewards"] for trajectory in trajectories]).reshape([-1,1])
+
+    # Binary dones from environment in a batch
+    dones_batch = np.concatenate([trajectory["dones"] for trajectory in trajectories])
+    
+    # Discounted returns for this batch. itertool used to make batch into long np array
+    returns_batch = np.array(list(itertools.chain.from_iterable(returns))).reshape([-1,1])
+
+    # Advantages for this batch. itertool used to make batch into long np array
+    advantages_batch = np.array(list(itertools.chain.from_iterable(advantages))).flatten().reshape([-1,1])
+
+    return [observations_batch, actions_batch, rewards_batch, returns_batch, next_observations_batch, advantages_batch]
+  
+  # Update learning rate
+  def update_lr(self, kl):
+    if self.training_params['adaptive_lr']:
+      if kl > self.training_params['desired_kl'] * 2: 
+        self.algorithm_params['learning_rate'] /= 1.5
+      elif kl < self.training_params['desired_kl'] / 2: 
+        self.algorithm_params['learning_rate'] *= 1.5
+      learning_rate = self.algorithm_params['learning_rate']
+    else:
+      learning_rate = self.algorithm_params['learning_rate']
+    return learning_rate
+  
+  # Add summaries to the writer
+  def add_summaries(self, summaries, timestep):
+    for summary in summaries:
+      # Write summary for tensorboard visualization
+      self.writer.add_summary(summary, timestep)
+
+  # Train value network
+  def train_value_network(self, observations_batch, returns_batch, learning_rate):
+    summaries, stats = self.value_network.train(observations_batch, returns_batch, learning_rate)
+    return [summaries, stats]
+
+  # Train policy network
+  def train_policy_network(self, observations_batch, actions_batch, advantages_batch, learning_rate):
+    summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
+    return [summaries, stats]
+
+  # Print stats
+  def print_stats(self, total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size):
+    ##### Reporting Performance #####
+      
+    # Printing performance progress and other useful infromation
+    print("_______________________________________________________________________________________________________________________________________________________________________________________________________________")
+    print("{:>15} {:>15} {:>15} {:>15} {:>20} {:>20} {:>20} {:>20} {:>10} {:>15}".format("total_timesteps", "episodes", "best_reward", "reward", "kl_divergence", "policy_loss", "value_loss", "average_advantage", "lr", "batch_size"))
+    print("{:>15} {:>15} {:>15.2f} {:>15.2f} {:>20.5E} {:>20.2f} {:>20.2f} {:>20.2f} {:>10.2E} {:>15}".format(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size))
+
