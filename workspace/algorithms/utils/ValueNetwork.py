@@ -123,7 +123,7 @@ class ValueNetwork:
 
   # Train the Q network from the given batches
   def train(self, observations_batch, returns_batch, learning_rate):
-    self.algorithm_params['learning_rate'] = 10*learning_rate
+    self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     losses = []
     stats = {}

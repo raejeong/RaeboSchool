@@ -122,6 +122,11 @@ class QNetwork:
     for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.target_q_network_vars, key=lambda v: v.name)):
      self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
     self.target_update = tf.group(*self.target_update)
+  
+    # self.target_update = []
+    # for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.target_q_network_vars, key=lambda v: v.name)):
+    #   self.target_update.append(var_target.assign(var))
+    # self.target_update = tf.group(*self.target_update)
 
     ##### Logging #####
 
@@ -213,3 +218,8 @@ class QNetwork:
     self.soft_target_update()
 
     return [summaries, stats]
+
+  def train_current(self, batch_size, observations_batch, actions_batch, rewards_batch, y, learning_rate):
+    self.algorithm_params['learning_rate'] = learning_rate
+    for i in range(300):
+      _ = self.sess.run([self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})

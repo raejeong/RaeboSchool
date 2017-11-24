@@ -158,9 +158,12 @@ class Agent:
       
       ##### Optimization #####
 
-      q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate)
-      q_network_loss = q_stats['q_network_loss']
-      self.add_summaries(q_summaries, total_timesteps)
+      # q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate)
+      # q_network_loss = q_stats['q_network_loss']
+      # self.add_summaries(q_summaries, total_timesteps)
+
+      self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate)
+      q_network_loss = 1.0
 
       value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
       value_network_loss = value_stats['value_network_loss']
@@ -314,13 +317,14 @@ class Agent:
   # Train Q Network
   def train_q_network(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate):
     y = self.compute_q_network_y_batch(batch_size, rewards_batch, next_observations_batch)
-    self.q_network.replay_buffer_add_batch(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y)
-    batches = self.q_network.get_batches()
-    batches = self.update_q_batches(batches)
-    summaries, stats = self.q_network.train(batches, learning_rate)
-    batches = self.update_q_batches(batches)
-    self.q_network.replay_buffer_update_batch(batches)
-    return [summaries, stats]
+    self.q_network.train_current(batch_size, observations_batch, actions_batch, rewards_batch, y, learning_rate)
+    # self.q_network.replay_buffer_add_batch(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y)
+    # batches = self.q_network.get_batches()
+    # batches = self.update_q_batches(batches)
+    # summaries, stats = self.q_network.train(batches, learning_rate)
+    # batches = self.update_q_batches(batches)
+    # self.q_network.replay_buffer_update_batch(batches)
+    # return [summaries, stats]
 
   # Compute the y (target) for Q network with the policy
   def compute_q_network_y_batch(self, batch_size, rewards_batch, next_observations_batch):
