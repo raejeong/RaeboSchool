@@ -117,16 +117,16 @@ class QNetwork:
     ##### Target Update #####
     
     # Soft target update operations for the Q network
-    self.target_update = []
-    tau = self.algorithm_params['target_update_rate']
-    for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.target_q_network_vars, key=lambda v: v.name)):
-     self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
-    self.target_update = tf.group(*self.target_update)
-  
     # self.target_update = []
+    # tau = self.algorithm_params['target_update_rate']
     # for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.target_q_network_vars, key=lambda v: v.name)):
-    #   self.target_update.append(var_target.assign(var))
+    #  self.target_update.append(var_target.assign((1. - tau) * var_target + tau * var))
     # self.target_update = tf.group(*self.target_update)
+  
+    self.target_update = []
+    for var, var_target in zip(sorted(self.current_q_network_vars,key=lambda v: v.name),sorted(self.target_q_network_vars, key=lambda v: v.name)):
+      self.target_update.append(var_target.assign(var))
+    self.target_update = tf.group(*self.target_update)
 
     ##### Logging #####
 
@@ -186,33 +186,32 @@ class QNetwork:
 
   # Train the Q network from the given batches
   def train(self, batches, learning_rate):
-    self.algorithm_params['learning_rate'] = 10*learning_rate
+    self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     losses = []
     stats = {}
     # Train with Experience Replay
-    for sample_batch in batches:
-      observations_mini_batch, actions_mini_batch, rewards_mini_batch, next_observations_mini_batch,y_mini_batch = [], [], [], [], []
-      for sample in sample_batch:
-        # Build the mini batch from sample batch
-        observations_mini_batch.append(sample[1].observation)
-        next_observations_mini_batch.append(sample[1].next_observation)
-        actions_mini_batch.append(sample[1].action)
-        rewards_mini_batch.append(sample[1].reward)
-        y_mini_batch.append(sample[1].y)
+    for i in range(20):
+      for sample_batch in batches:
+        observations_mini_batch, actions_mini_batch, rewards_mini_batch, next_observations_mini_batch,y_mini_batch = [], [], [], [], []
+        for sample in sample_batch:
+          # Build the mini batch from sample batch
+          observations_mini_batch.append(sample[1].observation)
+          next_observations_mini_batch.append(sample[1].next_observation)
+          actions_mini_batch.append(sample[1].action)
+          rewards_mini_batch.append(sample[1].reward)
+          y_mini_batch.append(sample[1].y)
 
-      observations_mini_batch = np.array(observations_mini_batch)
-      next_observations_mini_batch = np.array(next_observations_mini_batch)
-      actions_mini_batch = np.array(actions_mini_batch)
-      rewards_mini_batch = np.array(rewards_mini_batch)
-      y_mini_batch = np.array(y_mini_batch).reshape([-1,1])
+        observations_mini_batch = np.array(observations_mini_batch)
+        next_observations_mini_batch = np.array(next_observations_mini_batch)
+        actions_mini_batch = np.array(actions_mini_batch)
+        rewards_mini_batch = np.array(rewards_mini_batch)
+        y_mini_batch = np.array(y_mini_batch).reshape([-1,1])
 
-      # Training with sample batch
-      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
-      summaries.append(summary)
-      losses.append(q_network_loss)
-      if np.mean(np.array(losses)) < 10:
-        break
+        # Training with sample batch
+        summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+        summaries.append(summary)
+        losses.append(q_network_loss)
 
     stats['q_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()
@@ -221,5 +220,5 @@ class QNetwork:
 
   def train_current(self, batch_size, observations_batch, actions_batch, rewards_batch, y, learning_rate):
     self.algorithm_params['learning_rate'] = learning_rate
-    for i in range(300):
+    for i in range(100):
       _ = self.sess.run([self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})

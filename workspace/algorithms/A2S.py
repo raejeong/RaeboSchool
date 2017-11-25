@@ -1,6 +1,7 @@
 import numpy as np 
 import tensorflow as tf 
 import importlib
+import random
 from algorithms.utils.utils import *
 from algorithms.utils.PolicyNetwork import PolicyNetwork
 from algorithms.utils.QNetworkContinous import QNetwork
@@ -259,13 +260,16 @@ class Agent:
   # Compute action using Q network and policy network
   def compute_action(self, observation):
     suggested_actions = self.policy_network.compute_suggested_actions(observation)
-    best_action = None
-    best_q = -np.inf
-    for action in suggested_actions:
-      current_q = self.q_network.compute_target_q(observation, action)
-      if current_q > best_q:
-        best_q = current_q
-        best_action = action
+    if np.random.random() > 0.95:
+      best_action = random.choice(suggested_actions)
+    else:
+      best_action = None
+      best_q = -np.inf
+      for action in suggested_actions:
+        current_q = self.q_network.compute_target_q(observation, action)
+        if current_q > best_q:
+          best_q = current_q
+          best_action = action
     return best_action
   
   # Log rewards
