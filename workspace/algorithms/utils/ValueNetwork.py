@@ -76,6 +76,10 @@ class ValueNetwork:
     self.target_value_network = self.value_network_class.Network(self.sess, self.target_observations, 1, "target_value_network", self.network_params['network_size'])
     self.target_value_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_value_network')
 
+    # Best Value network, outputs value of observation
+    self.best_value_network = self.value_network_class.Network(self.sess, self.observations, 1, "best_value_network", self.network_params['network_size'])
+    self.best_value_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='best_value_network')
+
     ##### Loss #####
     
     # Compute and log loss for the value network
@@ -104,6 +108,18 @@ class ValueNetwork:
       self.target_update.append(var_target.assign(var))
     self.target_update = tf.group(*self.target_update)
 
+    self.backup_op = []
+    for var, var_target in zip(sorted(self.target_value_network_vars,key=lambda v: v.name),sorted(self.best_value_network_vars, key=lambda v: v.name)):
+      self.backup_op.append(var_target.assign(var))
+    self.backup_op = tf.group(*self.backup_op)
+    
+    self.restore_op = []
+    for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.target_value_network_vars, key=lambda v: v.name)):
+      self.restore_op.append(var_target.assign(var))
+    for var, var_target in zip(sorted(self.best_value_network_vars,key=lambda v: v.name),sorted(self.current_value_network_vars, key=lambda v: v.name)):
+      self.restore_op.append(var_target.assign(var))
+    self.restore_op = tf.group(*self.restore_op)
+    
     ##### Logging #####
 
     # Log useful information
@@ -117,9 +133,17 @@ class ValueNetwork:
     values = self.sess.run([self.target_value_network.out],{self.target_observations: observations})
     return values
   
-  # target_update the target network
+  # Target_update the target network
   def soft_target_update(self):
     _ = self.sess.run([self.target_update],{})
+
+  # Restore the last best network
+  def restore(self):
+    _ = self.sess.run([self.restore_op],{})
+
+  # Backup the target network
+  def backup(self):
+    _ = self.sess.run([self.backup_op],{})
 
   # Train the Q network from the given batches
   def train(self, observations_batch, returns_batch, learning_rate):
@@ -127,7 +151,7 @@ class ValueNetwork:
     summaries = []
     losses = []
     stats = {}
-    for i in range(300):
+    for i in range(200):
       # Training with batch
       summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)

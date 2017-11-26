@@ -90,6 +90,10 @@ class PolicyNetwork:
     self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['network_size'])
     self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
+    # Policy network with best average reward, used for KL divergence calculation, outputs the mean for the action
+    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "best_policy_network", self.network_params['network_size'])
+    self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='best_policy_network')
+
     ##### Policy Action Probability #####
       
     # Isolating the mean outputted by the policy network
@@ -158,6 +162,18 @@ class PolicyNetwork:
       self.update_last.append(var_target.assign(var))
     self.update_last = tf.group(*self.update_last)
 
+    self.backup_op = []
+    for var, var_target in zip(sorted(self.target_policy_network_vars,key=lambda v: v.name),sorted(self.best_policy_network_vars, key=lambda v: v.name)):
+      self.backup_op.append(var_target.assign(var))
+    self.backup_op = tf.group(*self.backup_op)
+    
+    self.restore_op = []
+    for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.target_policy_network_vars, key=lambda v: v.name)):
+      self.restore_op.append(var_target.assign(var))
+    for var, var_target in zip(sorted(self.best_policy_network_vars,key=lambda v: v.name),sorted(self.current_policy_network_vars, key=lambda v: v.name)):
+      self.restore_op.append(var_target.assign(var))
+    self.restore_op = tf.group(*self.restore_op)
+
     ##### Logging #####
 
     # Log useful information
@@ -186,6 +202,14 @@ class PolicyNetwork:
   # update the last policy network
   def update_last_policy(self):
     _ = self.sess.run([self.update_last],{})
+
+  # Restore the last best network
+  def restore(self):
+    _ = self.sess.run([self.restore_op],{})
+
+  # Backup the target network
+  def backup(self):
+    _ = self.sess.run([self.backup_op],{})
 
   # Train the Q network from the given batches
   def train(self, observations_batch, advantages_batch, actions_batch, learning_rate):

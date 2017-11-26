@@ -153,25 +153,38 @@ class Agent:
       
       # Save the best model
       if average_reward > best_average_reward:
+        # Backup network
+        self.q_network.backup()
+        self.value_network.backup()
+        self.policy_network.backup()
         # Save the model
         best_average_reward = average_reward     
         saver.save(self.sess, save_dir)
-      
-      ##### Optimization #####
 
-      q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate)
-      q_network_loss = q_stats['q_network_loss']
-      self.add_summaries(q_summaries, total_timesteps)
+      if average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
+        #Restore networks
+        print("RESTORED")
+        self.q_network.restore()
+        self.value_network.restore()
+        self.policy_network.restore()
+        self.data_collection_params['min_batch_size'] += 200
 
-      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
-      value_network_loss = value_stats['value_network_loss']
-      self.add_summaries(value_summaries, total_timesteps)
+      else:
+        ##### Optimization #####
 
-      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
-      policy_network_loss = policy_stats['policy_network_loss']
-      kl = policy_stats['kl']
-      average_advantage = policy_stats['average_advantage']
-      self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size)
+        q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, returns_batch, learning_rate)
+        q_network_loss = q_stats['q_network_loss']
+        self.add_summaries(q_summaries, total_timesteps)
+
+        value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
+        value_network_loss = value_stats['value_network_loss']
+        self.add_summaries(value_summaries, total_timesteps)
+
+        policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
+        policy_network_loss = policy_stats['policy_network_loss']
+        kl = policy_stats['kl']
+        average_advantage = policy_stats['average_advantage']
+        self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size)
 
     self.writer.close()
 
@@ -217,9 +230,15 @@ class Agent:
 
       # Compute the value estimates for the observations seen during this episode
       values = self.value_network.compute_value(observations)
+
+      # Compute the q value estimates for the observations seen during this episode
+      observations_batch = np.concatenate(observations).reshape([-1,self.observation_shape])
+      actions_batch = np.concatenate([actions]).reshape([-1,self.action_shape])
+      q_values = self.q_network.compute_target_q_batch(observations_batch, actions_batch)
       
       # Computing the advantage estimate
-      advantage = return_ - np.concatenate(values[0])
+      advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
+      # advantage = return_ - np.concatenate(values[0])
       returns.append(return_)
       advantages.append(advantage)
 
@@ -260,7 +279,7 @@ class Agent:
   # Compute action using Q network and policy network
   def compute_action(self, observation):
     suggested_actions = self.policy_network.compute_suggested_actions(observation)
-    if np.random.random() > 0.95:
+    if np.random.random() > 0.99:
       best_action = random.choice(suggested_actions)
     else:
       best_action = None
@@ -316,15 +335,16 @@ class Agent:
     return learning_rate
     
   # Train Q Network
-  def train_q_network(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, learning_rate):
-    y = self.compute_q_network_y_batch(batch_size, rewards_batch, next_observations_batch)
-    self.q_network.train_current(batch_size, observations_batch, actions_batch, rewards_batch, y, learning_rate)
-    self.q_network.replay_buffer_add_batch(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y)
-    batches = self.q_network.get_batches()
-    batches = self.update_q_batches(batches)
-    summaries, stats = self.q_network.train(batches, learning_rate)
-    batches = self.update_q_batches(batches)
-    self.q_network.replay_buffer_update_batch(batches)
+  def train_q_network(self, batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, returns_batch, learning_rate):
+    # y = self.compute_q_network_y_batch(batch_size, rewards_batch, next_observations_batch)
+    y = returns_batch
+    [summaries, stats] = self.q_network.train_current(batch_size, observations_batch, actions_batch, rewards_batch, y, learning_rate)
+    # self.q_network.replay_buffer_add_batch(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, y)
+    # batches = self.q_network.get_batches()
+    # batches = self.update_q_batches(batches)
+    # summaries, stats = self.q_network.train(batches, learning_rate)
+    # batches = self.update_q_batches(batches)
+    # self.q_network.replay_buffer_update_batch(batches)
     return [summaries, stats]
 
   # Compute the y (target) for Q network with the policy
