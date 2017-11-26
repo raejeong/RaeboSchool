@@ -146,16 +146,25 @@ class ValueNetwork:
     _ = self.sess.run([self.backup_op],{})
 
   # Train the Q network from the given batches
-  def train(self, observations_batch, returns_batch, learning_rate):
+  def train(self, batch_size, observations_batch, returns_batch, learning_rate):
     self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     losses = []
     stats = {}
-    for i in range(200):
-      # Training with batch
-      summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    for i in range(300):
+      mini_batch_idx = np.random.choice(batch_size, 32)
+      observations_mini_batch = observations_batch[mini_batch_idx,:]
+      returns_mini_batch = returns_batch[mini_batch_idx,:]
+
+      summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.returns:returns_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(value_network_loss)
+    
+    # for i in range(200):
+    #   # Training with batch
+    #   summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    #   summaries.append(summary)
+    #   losses.append(value_network_loss)
     stats['value_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()
 

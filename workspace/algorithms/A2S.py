@@ -176,7 +176,7 @@ class Agent:
         q_network_loss = q_stats['q_network_loss']
         self.add_summaries(q_summaries, total_timesteps)
 
-        value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
+        value_summaries, value_stats =self.train_value_network(batch_size, observations_batch, returns_batch, learning_rate)
         value_network_loss = value_stats['value_network_loss']
         self.add_summaries(value_summaries, total_timesteps)
 
@@ -235,7 +235,7 @@ class Agent:
       observations_batch = np.concatenate(observations).reshape([-1,self.observation_shape])
       actions_batch = np.concatenate([actions]).reshape([-1,self.action_shape])
       q_values = self.q_network.compute_target_q_batch(observations_batch, actions_batch)
-      
+
       # Computing the advantage estimate
       advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
       # advantage = return_ - np.concatenate(values[0])
@@ -400,8 +400,8 @@ class Agent:
       self.writer.add_summary(summary, timestep)
 
   # Train value network
-  def train_value_network(self, observations_batch, returns_batch, learning_rate):
-    summaries, stats = self.value_network.train(observations_batch, returns_batch, learning_rate)
+  def train_value_network(self, batch_size, observations_batch, returns_batch, learning_rate):
+    summaries, stats = self.value_network.train(batch_size, observations_batch, returns_batch, learning_rate)
     return [summaries, stats]
 
   # Train policy network
