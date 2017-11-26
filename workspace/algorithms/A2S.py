@@ -133,6 +133,10 @@ class Agent:
     # Keeping track of the best averge reward
     best_average_reward = -np.inf
     count = 0
+    best_observations_batch = None
+    best_A2C = best_average_reward
+    flag = True
+
 
 
     ##### Training #####
@@ -155,18 +159,28 @@ class Agent:
       average_reward = np.mean(undiscounted_returns)
 
 
+      flag = True
       print(self.A2C)
+
+      if average_reward > best_A2C and self.A2C:
+        best_A2C = average_reward
+        
+        # Backup network
+        self.q_network.backup()
+        self.value_network.backup()
+        self.policy_network.backup()
+        # Save the model
+        saver.save(self.sess, save_dir)
       
       # Save the best model
       if average_reward > best_average_reward:
-        self.algorithm_params['learning_rate'] /= 5.
-        learning_rate = self.algorithm_params['learning_rate']
         if self.A2C:
           count += 1
+          best_A2C = average_reward
         if count > 5 and self.A2C:
           count = 0
           self.A2C = not self.A2C
-
+        best_observations_batch = observations_batch
         # Backup network
         self.q_network.backup()
         self.value_network.backup()
@@ -178,22 +192,55 @@ class Agent:
       if not self.A2C and average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
         #Restore networks
         print("RESTORED")
-
-        self.algorithm_params['learning_rate'] /= 5.
+        
+       
+        self.algorithm_params['learning_rate'] /= 2.
         learning_rate = self.algorithm_params['learning_rate']
-        self.training_params['desired_kl'] /= 1.1
+        self.training_params['desired_kl'] /= 1.01
+        
+        self.data_collection_params['min_batch_size'] += 100
         self.q_network.restore()
         self.value_network.restore()
         self.policy_network.restore()
-        self.data_collection_params['min_batch_size'] += 100
         count += 1
-        if count > 12:
+        if count > 10:
           count = 0
           self.A2C = not self.A2C
-          actions_batch = self.current_q_sample_actions_batch(batch_size, observations_batch)
-          self.policy_network.train_q(observations_batch, actions_batch)
+          actionswe_batch = self.current_q_sample_actions_batch(best_observations_batch.shape[0], best_observations_batch)
+          self.policy_network.train_q(best_observations_batch.shape[0], best_observations_batch, actionswe_batch, 1e-3)
 
       else:
+        ##### Optimization #####
+
+        q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, returns_batch, learning_rate)
+        q_network_loss = q_stats['q_network_loss']
+        self.add_summaries(q_summaries, total_timesteps)
+
+        value_summaries, value_stats =self.train_value_network(batch_size, observations_batch, returns_batch, learning_rate)
+        value_network_loss = value_stats['value_network_loss']
+        self.add_summaries(value_summaries, total_timesteps)
+
+        policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
+        policy_network_loss = policy_stats['policy_network_loss']
+        kl = policy_stats['kl']
+        average_advantage = policy_stats['average_advantage']
+        self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size)
+
+      if self.A2C and average_reward < best_A2C and 1-(abs(average_reward- best_A2C)/(abs(best_A2C)+abs(average_reward)))<np.random.random():
+        #Restore networks
+        print("RESTORED")
+        
+       
+        self.algorithm_params['learning_rate'] /= 2.
+        learning_rate = self.algorithm_params['learning_rate']
+        self.training_params['desired_kl'] /= 1.01
+        
+        self.data_collection_params['min_batch_size'] += 100
+        self.q_network.restore()
+        self.value_network.restore()
+        self.policy_network.restore()
+      
+      elif self.A2C:
         ##### Optimization #####
 
         q_summaries, q_stats = self.train_q_network(batch_size, observations_batch, actions_batch, rewards_batch, next_observations_batch, returns_batch, learning_rate)
@@ -265,7 +312,6 @@ class Agent:
         advantage = return_ - np.concatenate(values[0])
       else:
         advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
-      advantage = return_ - np.concatenate(values[0])
       returns.append(return_)
       advantages.append(advantage)
 
@@ -397,7 +443,7 @@ class Agent:
       best_action = None
       best_q = -np.inf
       for action in suggested_actions:
-        current_q = self.q_network.compute_q(observations_batch[i,:], action)
+        current_q = self.q_network.compute_target_q(observations_batch[i,:], action)
         if current_q > best_q:
           best_q = current_q
           best_action = action

@@ -128,7 +128,7 @@ class PolicyNetwork:
 
     ##### Loss #####
 
-    self.q_action_loss = tf.reduce_mean(tf.squared_difference(self.actions_out, self.actions))
+    self.q_action_loss = tf.reduce_mean(tf.squared_difference(self.current_mean_policy, self.actions))
     self.q_action_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     self.train_q_action = self.q_action_optimizer.minimize(self.q_action_loss)
     
@@ -220,9 +220,9 @@ class PolicyNetwork:
     self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     stats = {}
-
-    # Taking the gradient step to optimize (train) the policy network.
-    policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    for i in range(1):
+      # Taking the gradient step to optimize (train) the policy network.
+      policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate']})
 
     # Get stats
     summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
@@ -245,18 +245,42 @@ class PolicyNetwork:
     return [summaries, stats]
 
   # Train the Q network from the given batches
-  def train_q(self, observations_batch, actions_batch, learning_rate):
+  def train_q(self, batch_size, observations_batch, actions_batch, learning_rate):
     self.algorithm_params['learning_rate'] = learning_rate
-   
+    observations_mini_batch = observations_batch
+    actions_mini_batch = actions_batch
+    loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     for i in range(500):
       mini_batch_idx = np.random.choice(batch_size, 32)
       observations_mini_batch = observations_batch[mini_batch_idx,:]
       actions_mini_batch = actions_batch[mini_batch_idx,:]
-      _ = self.sess.run([self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    # print(loss)
 
+    for i in range(500):
+      mini_batch_idx = np.random.choice(batch_size, 128)
+      observations_mini_batch = observations_batch[mini_batch_idx,:]
+      actions_mini_batch = actions_batch[mini_batch_idx,:]
+      loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    # print(loss)
+
+    for i in range(1000):
+      mini_batch_idx = np.random.choice(batch_size, 1000)
+      observations_mini_batch = observations_batch[mini_batch_idx,:]
+      actions_mini_batch = actions_batch[mini_batch_idx,:]
+      loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+
+    # print(loss)
+
+    for i in range(200000):
+      self.algorithm_params['learning_rate'] = learning_rate
+    observations_mini_batch = observations_batch
+    actions_mini_batch = actions_batch
+    loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # Backup the current policy network to last policy network
+    # print(loss)
+
     self.update_last_policy()
     
     self.soft_target_update()
  
-    return [summaries, stats]
