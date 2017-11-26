@@ -139,7 +139,7 @@ class Agent:
       
       ##### Optimization #####
 
-      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
+      value_summaries, value_stats =self.train_value_network(batch_size, observations_batch, returns_batch, learning_rate)
       value_network_loss = value_stats['value_network_loss']
       self.add_summaries(value_summaries, total_timesteps)
 
@@ -289,8 +289,8 @@ class Agent:
       self.writer.add_summary(summary, timestep)
 
   # Train value network
-  def train_value_network(self, observations_batch, returns_batch, learning_rate):
-    summaries, stats = self.value_network.train(observations_batch, returns_batch, learning_rate)
+  def train_value_network(self, batch_size, observations_batch, returns_batch, learning_rate):
+    summaries, stats = self.value_network.train(batch_size, observations_batch, returns_batch, learning_rate)
     return [summaries, stats]
 
   # Train policy network

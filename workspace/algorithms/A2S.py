@@ -92,6 +92,7 @@ class Agent:
     self.training_params = training_params
     self.network_params = network_params
     self.algorithm_params = algorithm_params
+    self.A2C = False
 
     # Hyper Paramters for Networks
     q_network_params = {'network_type':self.network_params['q_network'][0], 'network_size':self.network_params['q_network'][1]}
@@ -131,6 +132,8 @@ class Agent:
     
     # Keeping track of the best averge reward
     best_average_reward = -np.inf
+    count = 0
+
 
     ##### Training #####
     
@@ -150,9 +153,20 @@ class Agent:
 
       # Average undiscounted return for the last data collection
       average_reward = np.mean(undiscounted_returns)
+
+
+      print(self.A2C)
       
       # Save the best model
       if average_reward > best_average_reward:
+        self.algorithm_params['learning_rate'] /= 5.
+        learning_rate = self.algorithm_params['learning_rate']
+        if self.A2C:
+          count += 1
+        if count > 5 and self.A2C:
+          count = 0
+          self.A2C = not self.A2C
+
         # Backup network
         self.q_network.backup()
         self.value_network.backup()
@@ -161,13 +175,23 @@ class Agent:
         best_average_reward = average_reward     
         saver.save(self.sess, save_dir)
 
-      if average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
+      if not self.A2C and average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
         #Restore networks
         print("RESTORED")
+
+        self.algorithm_params['learning_rate'] /= 5.
+        learning_rate = self.algorithm_params['learning_rate']
+        self.training_params['desired_kl'] /= 1.1
         self.q_network.restore()
         self.value_network.restore()
         self.policy_network.restore()
-        self.data_collection_params['min_batch_size'] += 200
+        self.data_collection_params['min_batch_size'] += 100
+        count += 1
+        if count > 12:
+          count = 0
+          self.A2C = not self.A2C
+          actions_batch = self.current_q_sample_actions_batch(batch_size, observations_batch)
+          self.policy_network.train_q(observations_batch, actions_batch)
 
       else:
         ##### Optimization #####
@@ -237,8 +261,11 @@ class Agent:
       q_values = self.q_network.compute_target_q_batch(observations_batch, actions_batch)
 
       # Computing the advantage estimate
-      advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
-      # advantage = return_ - np.concatenate(values[0])
+      if self.A2C:
+        advantage = return_ - np.concatenate(values[0])
+      else:
+        advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
+      advantage = return_ - np.concatenate(values[0])
       returns.append(return_)
       advantages.append(advantage)
 
@@ -279,7 +306,7 @@ class Agent:
   # Compute action using Q network and policy network
   def compute_action(self, observation):
     suggested_actions = self.policy_network.compute_suggested_actions(observation)
-    if np.random.random() > 0.99:
+    if self.A2C:
       best_action = random.choice(suggested_actions)
     else:
       best_action = None

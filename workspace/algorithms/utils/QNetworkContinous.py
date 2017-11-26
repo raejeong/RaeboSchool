@@ -247,7 +247,7 @@ class QNetwork:
     summaries = []
     losses = []
     stats = {}
-    for i in range(300):
+    for i in range(500):
       mini_batch_idx = np.random.choice(batch_size, 32)
       observations_mini_batch = observations_batch[mini_batch_idx,:]
       actions_mini_batch = actions_batch[mini_batch_idx,:]
@@ -258,7 +258,7 @@ class QNetwork:
       summaries.append(summary)
       losses.append(q_network_loss)
 
-    # for i in range(200):
+    # for i in range(30):
     #   summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})
     #   summaries.append(summary)
     #   losses.append(q_network_loss)

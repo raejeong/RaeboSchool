@@ -127,6 +127,10 @@ class PolicyNetwork:
     self.actions_out = tf.reshape(self.target_gaussian_policy_distribution._sample_n(1),[-1,self.action_shape])
 
     ##### Loss #####
+
+    self.q_action_loss = tf.reduce_mean(tf.squared_difference(self.actions_out, self.actions))
+    self.q_action_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+    self.train_q_action = self.q_action_optimizer.minimize(self.q_action_loss)
     
     # Compute and log loss for policy network
     self.negative_log_prob = -self.current_gaussian_policy_distribution.log_prob(self.actions)
@@ -236,6 +240,23 @@ class PolicyNetwork:
     stats['kl'] = kl
     stats['average_advantage'] = average_advantage
 
+    self.soft_target_update()
+ 
+    return [summaries, stats]
+
+  # Train the Q network from the given batches
+  def train_q(self, observations_batch, actions_batch, learning_rate):
+    self.algorithm_params['learning_rate'] = learning_rate
+   
+    for i in range(500):
+      mini_batch_idx = np.random.choice(batch_size, 32)
+      observations_mini_batch = observations_batch[mini_batch_idx,:]
+      actions_mini_batch = actions_batch[mini_batch_idx,:]
+      _ = self.sess.run([self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+
+    # Backup the current policy network to last policy network
+    self.update_last_policy()
+    
     self.soft_target_update()
  
     return [summaries, stats]
