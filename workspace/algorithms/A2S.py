@@ -175,7 +175,7 @@ class Agent:
       # Save the best model
       if average_reward > best_average_reward:
         if self.A2C:
-          count += 1
+          count += 0
           best_A2C = average_reward
         if count > 5 and self.A2C:
           count = 0
@@ -202,7 +202,7 @@ class Agent:
         self.q_network.restore()
         self.value_network.restore()
         self.policy_network.restore()
-        count += 1
+        count += 0
         if count > 10:
           count = 0
           self.A2C = not self.A2C
