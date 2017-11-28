@@ -203,11 +203,12 @@ class Agent:
         self.value_network.restore()
         self.policy_network.restore()
         count += 0
-        if count > 10:
+        if count > 8:
           count = 0
-          self.A2C = not self.A2C
           actionswe_batch = self.current_q_sample_actions_batch(best_observations_batch.shape[0], best_observations_batch)
           self.policy_network.train_q(best_observations_batch.shape[0], best_observations_batch, actionswe_batch, 1e-3)
+          self.A2C = not self.A2C
+
 
       else:
         ##### Optimization #####
