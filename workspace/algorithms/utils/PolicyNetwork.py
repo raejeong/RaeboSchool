@@ -272,7 +272,7 @@ class PolicyNetwork:
 
     # print(loss)
 
-    for i in range(1000):
+    for i in range(10000):
       self.algorithm_params['learning_rate'] = learning_rate
     observations_mini_batch = observations_batch
     actions_mini_batch = actions_batch

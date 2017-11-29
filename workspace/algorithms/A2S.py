@@ -189,7 +189,7 @@ class Agent:
         best_average_reward = average_reward     
         saver.save(self.sess, save_dir)
 
-      if not self.A2C and average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random():
+      if not self.A2C and average_reward < best_average_reward and 1-(abs(average_reward- best_average_reward)/(abs(best_average_reward)+abs(average_reward)))<np.random.random()-0.35:
         #Restore networks
         print("RESTORED")
         
@@ -220,6 +220,8 @@ class Agent:
         value_summaries, value_stats =self.train_value_network(batch_size, observations_batch, returns_batch, learning_rate)
         value_network_loss = value_stats['value_network_loss']
         self.add_summaries(value_summaries, total_timesteps)
+        actionswe_batch = self.current_q_sample_actions_batch(observations_batch.shape[0], observations_batch)
+        self.policy_network.train_q(observations_batch.shape[0], observations_batch, actionswe_batch, learning_rate)
 
         policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
         policy_network_loss = policy_stats['policy_network_loss']
@@ -353,7 +355,7 @@ class Agent:
   # Compute action using Q network and policy network
   def compute_action(self, observation):
     suggested_actions = self.policy_network.compute_suggested_actions(observation)
-    if self.A2C:
+    if np.random.random() > 0.9:
       best_action = random.choice(suggested_actions)
     else:
       best_action = None
