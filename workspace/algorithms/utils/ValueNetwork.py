@@ -147,7 +147,7 @@ class ValueNetwork:
 
   # Train the Q network from the given batches
   def train(self, batch_size, observations_batch, returns_batch, learning_rate):
-    self.algorithm_params['learning_rate'] = 10*learning_rate
+    self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     losses = []
     stats = {}
@@ -160,11 +160,19 @@ class ValueNetwork:
     #   summaries.append(summary)
     #   losses.append(value_network_loss)
     
-    for i in range(30):
+    for i in range(100):
+      # Training with batch
+      summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      summaries.append(summary)
+
+    for i in range(20000):
       # Training with batch
       summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(value_network_loss)
+      if np.mean(np.array(losses)) < 200:
+        break
+
     stats['value_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()
 

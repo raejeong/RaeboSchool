@@ -63,7 +63,7 @@ def test(agent_class, id, env_name, seed, record, data_collection_params, traini
                 observation, reward, done, _ = env.step(action)
                 episode_reward[-1] += reward
 
-        print("Average Reward: %.2f" % np.mean(episode_reward))
+        print("Max Reward: %.2f" % np.max(episode_reward))
         env.close()
 
 #
