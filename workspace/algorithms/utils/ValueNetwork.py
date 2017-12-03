@@ -128,7 +128,12 @@ class ValueNetwork:
     # Initialize all tf variables
     # self.sess.run(tf.global_variables_initializer())
 
-  # Compute value of an observation
+# Compute best value of an observation
+  def compute_value_best(self, observations):
+    values = self.sess.run([self.best_value_network.out],{self.observations: observations})
+    return values
+
+    # Compute value of an observation
   def compute_value(self, observations):
     values = self.sess.run([self.target_value_network.out],{self.target_observations: observations})
     return values
@@ -164,12 +169,18 @@ class ValueNetwork:
       # Training with batch
       summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
-
-    for i in range(20000):
+      losses.append(value_network_loss)
+    for i in range(5000):
       # Training with batch
       summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(value_network_loss)
+      # mini_batch_idx = np.random.choice(batch_size, 128)
+      # observations_mini_batch = observations_batch[mini_batch_idx,:]
+      # returns_mini_batch = returns_batch[mini_batch_idx,:]
+      # summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.returns:returns_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      # summaries.append(summary)
+      # losses.append(value_network_loss)
       if np.mean(np.array(losses)) < 200:
         break
 

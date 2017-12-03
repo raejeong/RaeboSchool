@@ -174,12 +174,14 @@ class Agent:
       if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.6:
         #Restore networks
         print("RESTORED")       
-        self.algorithm_params['learning_rate'] /= 2.
+        self.algorithm_params['learning_rate'] /= 5.
         learning_rate = self.algorithm_params['learning_rate']
-        self.training_params['desired_kl'] /= 1.01
+        self.training_params['desired_kl'] /= 1.1
         self.q_network.restore()
         self.value_network.restore()
         self.policy_network.restore()
+        actionswe_batch = self.current_q_sample_actions_batch(observations_batch.shape[0], observations_batch)
+        self.policy_network.train_q(observations_batch.shape[0], observations_batch, actionswe_batch, 1e-5)
         count += 0
         if count > 8:
           count = 0
@@ -301,10 +303,17 @@ class Agent:
 
   # Compute action using Q network and policy network
   def compute_action(self, observation):
-    suggested_actions = self.policy_network.compute_suggested_actions(observation)
-    if np.random.random() > 1000:
-      best_action = random.choice(suggested_actions)
+    if np.random.random() > 100:
+      suggested_actions = self.policy_network.compute_suggested_actions_best(observation)
+      best_action = None
+      best_q = -np.inf
+      for action in suggested_actions:
+        current_q = self.q_network.compute_best_q(observation, action)
+        if current_q > best_q:
+          best_q = current_q
+          best_action = action
     else:
+      suggested_actions = self.policy_network.compute_suggested_actions(observation)
       best_action = None
       best_q = -np.inf
       for action in suggested_actions:

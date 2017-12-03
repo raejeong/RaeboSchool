@@ -100,21 +100,25 @@ class PolicyNetwork:
     self.current_mean_policy = tf.reshape(tf.squeeze(self.current_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
     self.target_mean_policy = tf.reshape(tf.squeeze(self.target_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
     self.last_mean_policy = tf.reshape(tf.squeeze(self.last_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
+    self.best_mean_policy = tf.reshape(tf.squeeze(self.best_policy_network.out[:,:self.action_shape]),[-1, self.action_shape])
     
     # Isolating the std dev outputted by the policy network, softplus is used to make sure that the std dev is positive
     if self.algorithm_params['std_dev'][0]=='network':
       self.current_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.current_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
       self.target_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.target_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
       self.last_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.last_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
+      self.best_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.best_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
     else:
       self.current_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
       self.target_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
       self.last_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
+      self.best_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
     
     # Gaussian distribution is built with mean and std dev from the policy network
     self.current_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.current_mean_policy, self.current_std_dev_policy)
     self.target_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.target_mean_policy, self.target_std_dev_policy)
     self.last_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.last_mean_policy, self.last_std_dev_policy)
+    self.best_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.best_mean_policy, self.best_std_dev_policy)
     
     # Compute and log the KL divergence from last policy distribution to the current policy distribution
     self.kl = tf.reduce_mean(tf.contrib.distributions.kl_divergence(self.current_gaussian_policy_distribution, self.last_gaussian_policy_distribution))
@@ -123,6 +127,7 @@ class PolicyNetwork:
     # Action suggested by the current policy network
     number_of_suggestions = self.algorithm_params['number_of_suggestions']
     self.suggested_actions_out = tf.reshape(self.target_gaussian_policy_distribution._sample_n(number_of_suggestions),[-1,number_of_suggestions,self.action_shape])
+    self.suggested_actions_out_best = tf.reshape(self.best_gaussian_policy_distribution._sample_n(number_of_suggestions),[-1,number_of_suggestions,self.action_shape])
 
     self.actions_out = tf.reshape(self.target_gaussian_policy_distribution._sample_n(1),[-1,self.action_shape])
 
@@ -189,6 +194,14 @@ class PolicyNetwork:
   # Compute suggested actions from observation
   def compute_suggested_actions(self, observation):
     suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None]})
+    actions = []
+    for i in range(self.algorithm_params['number_of_suggestions']):
+      actions.append(suggested_actions[0][:,i,:])
+    return actions
+
+  # Compute best suggested actions from observation
+  def compute_suggested_actions_best(self, observation):
+    suggested_actions = self.sess.run([self.suggested_actions_out_best], {self.observations: observation[None]})
     actions = []
     for i in range(self.algorithm_params['number_of_suggestions']):
       actions.append(suggested_actions[0][:,i,:])
@@ -272,7 +285,7 @@ class PolicyNetwork:
 
     # print(loss)
 
-    for i in range(1000):
+    for i in range(500):
       self.algorithm_params['learning_rate'] = learning_rate
     observations_mini_batch = observations_batch
     actions_mini_batch = actions_batch
