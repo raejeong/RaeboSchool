@@ -154,7 +154,10 @@ class Agent:
       average_reward = np.mean(undiscounted_returns)
       max_reward = np.max(undiscounted_returns)
 
-      print(self.A2C)
+      self.policy_network.update_std_dev()
+
+
+      print(self.policy_network.std_dev)
       
       # Save the best model
       if max_reward > best_max_reward:
@@ -399,7 +402,7 @@ class Agent:
     actions_batch = []
     for i in range(batch_size):
       suggested_actions = self.policy_network.compute_suggested_actions(observations_batch[i,:])
-      best_action = None
+      best_action = None 
       best_q = -np.inf
       for action in suggested_actions:
         current_q = self.q_network.compute_target_q(observations_batch[i,:], action)

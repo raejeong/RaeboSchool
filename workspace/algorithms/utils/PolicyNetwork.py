@@ -54,10 +54,14 @@ class PolicyNetwork:
     self.observation_shape = self.env.observation_space.shape[0]
     self.action_shape = self.env.action_space.shape[0]
 
+    self.std_dev = self.algorithm_params['std_dev'][1]
+
     ##### Placeholders #####
 
     # placeholder for learning rate for the optimizer
     self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
+
+    self.std_dev_ph = tf.placeholder(tf.float32, name="std_dev")
     
     # Placeholder for observations
     self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
@@ -109,10 +113,10 @@ class PolicyNetwork:
       self.last_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.last_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
       self.best_std_dev_policy = tf.reshape((tf.nn.softplus(tf.squeeze(self.best_policy_network.out[:,self.action_shape:])) + 1e-5),[-1, self.action_shape])
     else:
-      self.current_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
-      self.target_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
-      self.last_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
-      self.best_std_dev_policy = tf.constant(self.algorithm_params['std_dev'][1])
+      self.current_std_dev_policy = self.std_dev_ph
+      self.target_std_dev_policy = self.std_dev_ph
+      self.last_std_dev_policy = self.std_dev_ph
+      self.best_std_dev_policy = self.std_dev_ph
     
     # Gaussian distribution is built with mean and std dev from the policy network
     self.current_gaussian_policy_distribution = tf.contrib.distributions.Normal(self.current_mean_policy, self.current_std_dev_policy)
@@ -193,7 +197,7 @@ class PolicyNetwork:
 
   # Compute suggested actions from observation
   def compute_suggested_actions(self, observation):
-    suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None]})
+    suggested_actions = self.sess.run([self.suggested_actions_out], {self.observations: observation[None], self.std_dev_ph:self.std_dev})
     actions = []
     for i in range(self.algorithm_params['number_of_suggestions']):
       actions.append(suggested_actions[0][:,i,:])
@@ -201,7 +205,7 @@ class PolicyNetwork:
 
   # Compute best suggested actions from observation
   def compute_suggested_actions_best(self, observation):
-    suggested_actions = self.sess.run([self.suggested_actions_out_best], {self.observations: observation[None]})
+    suggested_actions = self.sess.run([self.suggested_actions_out_best], {self.observations: observation[None], self.std_dev_ph:self.std_dev})
     actions = []
     for i in range(self.algorithm_params['number_of_suggestions']):
       actions.append(suggested_actions[0][:,i,:])
@@ -209,7 +213,7 @@ class PolicyNetwork:
 
   # Compute suggested actions from observation
   def compute_action(self, observation):
-    action = self.sess.run([self.actions_out], {self.observations: observation[None]})[0]
+    action = self.sess.run([self.actions_out], {self.observations: observation[None], self.std_dev_ph:self.std_dev})[0]
     return action
   
   # update the target network
@@ -235,10 +239,10 @@ class PolicyNetwork:
     stats = {}
     for i in range(1):
       # Taking the gradient step to optimize (train) the policy network.
-      policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+      policy_network_losses, policy_network_loss, _ = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate'], self.std_dev_ph:self.std_dev})
 
     # Get stats
-    summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch})
+    summary, average_advantage, kl  = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.std_dev_ph:self.std_dev})
 
     # Backup the current policy network to last policy network
     self.update_last_policy()
@@ -285,11 +289,11 @@ class PolicyNetwork:
 
     # print(loss)
 
-    for i in range(500):
-      self.algorithm_params['learning_rate'] = learning_rate
-    observations_mini_batch = observations_batch
-    actions_mini_batch = actions_batch
-    loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    # for i in range(500):
+    #   self.algorithm_params['learning_rate'] = learning_rate
+    #   observations_mini_batch = observations_batch
+    #   actions_mini_batch = actions_batch
+    #   loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # Backup the current policy network to last policy network
     # print(loss)
 
@@ -297,3 +301,7 @@ class PolicyNetwork:
     
     self.soft_target_update()
  
+  def update_std_dev(self):
+    self.std_dev -= 0.000
+    if self.std_dev < 0.3:
+      self.std_dev = 0.3
