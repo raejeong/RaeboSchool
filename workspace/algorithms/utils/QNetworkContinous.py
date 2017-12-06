@@ -263,27 +263,27 @@ class QNetwork:
       # summaries.append(summary)
       # losses.append(q_network_loss)
 
-    for i in range(100):
+    for i in range(10):
       summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(q_network_loss)
 
-    for i in range(5000):
-      # mini_batch_idx = np.random.choice(batch_size, 128)
-      # observations_mini_batch = observations_batch[mini_batch_idx,:]
-      # actions_mini_batch = actions_batch[mini_batch_idx,:]
-      # rewards_mini_batch = rewards_batch[mini_batch_idx,:]
-      # y_mini_batch = y[mini_batch_idx,:]
+    # for i in range(5000):
+    #   # mini_batch_idx = np.random.choice(batch_size, 128)
+    #   # observations_mini_batch = observations_batch[mini_batch_idx,:]
+    #   # actions_mini_batch = actions_batch[mini_batch_idx,:]
+    #   # rewards_mini_batch = rewards_batch[mini_batch_idx,:]
+    #   # y_mini_batch = y[mini_batch_idx,:]
 
-      # summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
-      # summaries.append(summary)
-      # losses.append(q_network_loss)
+    #   # summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.rewards:rewards_mini_batch, self.target_q_values:y_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    #   # summaries.append(summary)
+    #   # losses.append(q_network_loss)
 
-      summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})
-      summaries.append(summary)
-      losses.append(q_network_loss)
-      if np.mean(np.array(losses)) < 200:
-        break
+    #   summary, q_network_loss, _ = self.sess.run([self.summary, self.q_network_loss, self.train_q_network], {self.observations:observations_batch, self.actions:actions_batch, self.rewards:rewards_batch, self.target_q_values:y, self.learning_rate:self.algorithm_params['learning_rate']})
+    #   summaries.append(summary)
+    #   losses.append(q_network_loss)
+    #   if np.mean(np.array(losses)) < 200:
+    #     break
 
     stats['q_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()

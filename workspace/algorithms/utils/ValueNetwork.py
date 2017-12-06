@@ -165,24 +165,24 @@ class ValueNetwork:
     #   summaries.append(summary)
     #   losses.append(value_network_loss)
     
-    for i in range(100):
+    for i in range(10):
       # Training with batch
       summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
       summaries.append(summary)
       losses.append(value_network_loss)
-    for i in range(5000):
-      # Training with batch
-      summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
-      summaries.append(summary)
-      losses.append(value_network_loss)
-      # mini_batch_idx = np.random.choice(batch_size, 128)
-      # observations_mini_batch = observations_batch[mini_batch_idx,:]
-      # returns_mini_batch = returns_batch[mini_batch_idx,:]
-      # summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.returns:returns_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
-      # summaries.append(summary)
-      # losses.append(value_network_loss)
-      if np.mean(np.array(losses)) < 200:
-        break
+    # for i in range(5000):
+    #   # Training with batch
+    #   summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_batch, self.returns:returns_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    #   summaries.append(summary)
+    #   losses.append(value_network_loss)
+    #   # mini_batch_idx = np.random.choice(batch_size, 128)
+    #   # observations_mini_batch = observations_batch[mini_batch_idx,:]
+    #   # returns_mini_batch = returns_batch[mini_batch_idx,:]
+    #   # summary, value_network_loss, _ = self.sess.run([self.summary, self.value_network_loss, self.train_value_network], {self.observations:observations_mini_batch, self.returns:returns_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    #   # summaries.append(summary)
+    #   # losses.append(value_network_loss)
+    #   if np.mean(np.array(losses)) < 200:
+    #     break
 
     stats['value_network_loss'] = np.mean(np.array(losses))
     self.soft_target_update()

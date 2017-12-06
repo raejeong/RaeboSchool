@@ -79,7 +79,7 @@ env_settings = {
                                    'learning_rate':1e-3,
                                    'number_of_suggestions':6, 
                                    'q_target_estimate_iteration':3,
-                                   'std_dev':['fixed', 0.4], 
+                                   'std_dev':['fixed', 0.5], 
                                    'PER_size':100000, 
                                    'PER_batch_size':32, 
                                    'PER_iterations':30,
