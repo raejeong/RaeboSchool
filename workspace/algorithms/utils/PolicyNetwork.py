@@ -274,11 +274,11 @@ class PolicyNetwork:
     #   loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # # print(loss)
 
-    for i in range(500):
-      mini_batch_idx = np.random.choice(batch_size, 128)
-      observations_mini_batch = observations_batch[mini_batch_idx,:]
-      actions_mini_batch = actions_batch[mini_batch_idx,:]
-      loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    # for i in range(500):
+    #   mini_batch_idx = np.random.choice(batch_size, 128)
+    #   observations_mini_batch = observations_batch[mini_batch_idx,:]
+    #   actions_mini_batch = actions_batch[mini_batch_idx,:]
+    #   loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # print(loss)
 
     # for i in range(1000):
@@ -289,11 +289,11 @@ class PolicyNetwork:
 
     # print(loss)
 
-    # for i in range(500):
-    #   self.algorithm_params['learning_rate'] = learning_rate
-    #   observations_mini_batch = observations_batch
-    #   actions_mini_batch = actions_batch
-    #   loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
+    for i in range(500):
+      self.algorithm_params['learning_rate'] = learning_rate
+      observations_mini_batch = observations_batch
+      actions_mini_batch = actions_batch
+      loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # Backup the current policy network to last policy network
     # print(loss)
 
