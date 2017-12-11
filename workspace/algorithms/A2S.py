@@ -200,7 +200,7 @@ class Agent:
         save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S"    
         saver.save(self.sess, save_dir)
 
-      if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.59:
+      if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.55:
         #Restore networks
         print("RESTORED")       
         self.algorithm_params['learning_rate'] /= 5.
