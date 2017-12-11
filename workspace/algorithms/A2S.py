@@ -133,6 +133,11 @@ class Agent:
     # Keeping track of the best averge reward
     best_max_reward = -np.inf
     count = 0
+    env_name = "Hopper"
+    flag1 = True
+    flag25 = True
+    flag50 = True
+    flag75 = True
 
     ##### Training #####
     
@@ -149,13 +154,33 @@ class Agent:
       
       # Learning rate adaptation
       learning_rate = self.update_lr(kl)
+      # learning_rate = self.algorithm_params['learning_rate']
 
       # Average undiscounted return for the last data collection
       average_reward = np.mean(undiscounted_returns)
-      max_reward = np.max(undiscounted_returns)
+      max_reward = np.mean(undiscounted_returns)
 
       self.policy_network.update_std_dev()
 
+      if flag1 and total_timesteps > 10000:
+        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-10k"    
+        saver.save(self.sess, save_dir)
+        flag1 = False
+
+      if flag25 and total_timesteps > 250000:
+        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-250k"    
+        saver.save(self.sess, save_dir)
+        flag25 = False
+
+      if flag50 and total_timesteps > 500000:
+        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-500k"    
+        saver.save(self.sess, save_dir)
+        flag50 = False
+
+      if flag75 and total_timesteps > 750000:
+        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-750k"    
+        saver.save(self.sess, save_dir)
+        flag75 = False
 
       print(self.policy_network.std_dev)
       
@@ -171,10 +196,11 @@ class Agent:
         self.value_network.backup()
         self.policy_network.backup()
         # Save the model
-        best_max_reward = max_reward     
+        best_max_reward = max_reward 
+        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S"    
         saver.save(self.sess, save_dir)
 
-      if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.65:
+      if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.59:
         #Restore networks
         print("RESTORED")       
         self.algorithm_params['learning_rate'] /= 5.
