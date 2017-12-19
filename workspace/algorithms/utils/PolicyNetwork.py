@@ -144,7 +144,7 @@ class PolicyNetwork:
     # Compute and log loss for policy network
     self.negative_log_prob = -self.current_gaussian_policy_distribution.log_prob(self.actions)
     self.policy_network_losses = self.negative_log_prob*self.advantages # be careful with this operation, it should be element wise not matmul!
-    self.policy_network_loss = tf.reduce_mean(self.policy_network_losses)
+    self.policy_network_loss = tf.reduce_mean(self.policy_network_losses) #- tf.reduce_mean(self.current_gaussian_policy_distribution.entropy())
     self.summary = tf.summary.scalar('policy_network_loss', self.policy_network_loss)
 
     ##### Optimization #####
@@ -274,7 +274,7 @@ class PolicyNetwork:
     #   loss, _ = self.sess.run([self.q_action_loss, self.train_q_action], {self.observations:observations_mini_batch, self.actions:actions_mini_batch, self.learning_rate:self.algorithm_params['learning_rate']})
     # # print(loss)
 
-    for i in range(500):
+    for i in range(50):
       mini_batch_idx = np.random.choice(batch_size, 128)
       observations_mini_batch = observations_batch[mini_batch_idx,:]
       actions_mini_batch = actions_batch[mini_batch_idx,:]
@@ -289,7 +289,7 @@ class PolicyNetwork:
 
     # print(loss)
 
-    # for i in range(500):
+    # for i in range(50):
     #   self.algorithm_params['learning_rate'] = learning_rate
     #   observations_mini_batch = observations_batch
     #   actions_mini_batch = actions_batch

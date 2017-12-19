@@ -77,7 +77,7 @@ env_settings = {
                                  'policy_network':['fully_connected_network','medium']},
                algorithm_params = {'gamma':0.97, 
                                    'learning_rate':1e-3,
-                                   'number_of_suggestions':6, 
+                                   'number_of_suggestions':10, 
                                    'q_target_estimate_iteration':3,
                                    'std_dev':['fixed', 0.5], 
                                    'PER_size':100000, 
@@ -85,7 +85,7 @@ env_settings = {
                                    'PER_iterations':30,
                                    'PER_alpha':0.6, 
                                    'PER_epsilon':0.01,
-                                   'target_update_rate':0.1},
+                                   'target_update_rate':1.0},
                logs_path="/home/user/workspace/logs/"
                )
 }

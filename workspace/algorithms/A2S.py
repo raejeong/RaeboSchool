@@ -158,7 +158,7 @@ class Agent:
 
       # Average undiscounted return for the last data collection
       average_reward = np.mean(undiscounted_returns)
-      max_reward = np.mean(undiscounted_returns)
+      max_reward = np.max(undiscounted_returns)
 
       self.policy_network.update_std_dev()
 
@@ -186,6 +186,7 @@ class Agent:
       
       # Save the best model
       if max_reward > best_max_reward:
+        count = 0
         if self.A2C:
           count += 0
           if count > 5:
@@ -200,23 +201,22 @@ class Agent:
         save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S"    
         saver.save(self.sess, save_dir)
 
-      if max_reward < best_max_reward and 1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.55:
+      if (max_reward < best_max_reward) and (1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.65):
+      # if max_reward < best_max_reward:
+        # count += 1
+
+      # if count > 12:
         #Restore networks
-        print("RESTORED")       
-        self.algorithm_params['learning_rate'] /= 5.
+        print("RESTORED")
+        count = 0       
+        self.algorithm_params['learning_rate'] /= 5.0
         learning_rate = self.algorithm_params['learning_rate']
         self.training_params['desired_kl'] /= 1.1
         self.q_network.restore()
         self.value_network.restore()
         self.policy_network.restore()
         actionswe_batch = self.current_q_sample_actions_batch(observations_batch.shape[0], observations_batch)
-        self.policy_network.train_q(observations_batch.shape[0], observations_batch, actionswe_batch, 1e-5)
-        count += 0
-        if count > 8:
-          count = 0
-          # actionswe_batch = self.current_q_sample_actions_batch(best_observations_batch.shape[0], best_observations_batch)
-          # self.policy_network.train_q(best_observations_batch.shape[0], best_observations_batch, actionswe_batch, 1e-3)
-          self.A2C = not self.A2C
+        self.policy_network.train_q(observations_batch.shape[0], observations_batch, actionswe_batch, learning_rate)
 
       else:
         ##### Optimization #####
@@ -290,6 +290,7 @@ class Agent:
 
       # Computing the advantage estimate
       if True:
+      # if np.random.random() > 0.0:
         advantage = return_ - np.concatenate(values[0])
       else:
         advantage = np.concatenate(q_values[0]) - np.concatenate(values[0])
@@ -332,15 +333,8 @@ class Agent:
 
   # Compute action using Q network and policy network
   def compute_action(self, observation):
-    if np.random.random() > 100:
-      suggested_actions = self.policy_network.compute_suggested_actions_best(observation)
-      best_action = None
-      best_q = -np.inf
-      for action in suggested_actions:
-        current_q = self.q_network.compute_best_q(observation, action)
-        if current_q > best_q:
-          best_q = current_q
-          best_action = action
+    if np.random.random() > 12:
+      best_action = self.policy_network.compute_action(observation)
     else:
       suggested_actions = self.policy_network.compute_suggested_actions(observation)
       best_action = None

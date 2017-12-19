@@ -315,7 +315,7 @@ class Agent:
 
   # Train value network
   def train_value_network(self, batch_size, observations_batch, returns_batch, learning_rate):
-    summaries, stats = self.value_network.train(batch_size, observations_batch, returns_batch, learning_rate)
+    summaries, stats = self.value_network.train_once(batch_size, observations_batch, returns_batch, learning_rate)
     return [summaries, stats]
 
   # Train policy network
