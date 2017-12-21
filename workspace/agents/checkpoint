@@ -1,0 +1,6 @@
+model_checkpoint_path: "/home/user/workspace/agents/HopperBestA2S"
+all_model_checkpoint_paths: "/home/user/workspace/agents/HopperBestA2S-10k"
+all_model_checkpoint_paths: "/home/user/workspace/agents/HopperBestA2S-250k"
+all_model_checkpoint_paths: "/home/user/workspace/agents/HopperBestA2S-500k"
+all_model_checkpoint_paths: "/home/user/workspace/agents/HopperBestA2S-750k"
+all_model_checkpoint_paths: "/home/user/workspace/agents/HopperBestA2S"

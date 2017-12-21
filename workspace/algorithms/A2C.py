@@ -111,7 +111,6 @@ class Agent:
     
     # Keeping track of the best averge reward
     best_average_reward = -np.inf
-    env_name = "Hopper"
     flag1 = True
     flag25 = True
     flag50 = True
@@ -137,30 +136,25 @@ class Agent:
       average_reward = np.mean(undiscounted_returns)
 
       if flag1 and total_timesteps > 10000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2C-10k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-10k.ckpt")
         flag1 = False
 
       if flag25 and total_timesteps > 250000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2C-250k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-250k.ckpt")
         flag25 = False
 
       if flag50 and total_timesteps > 500000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2C-500k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-500k.ckpt")
         flag50 = False
 
       if flag75 and total_timesteps > 750000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2C-750k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-750k.ckpt")
         flag75 = False
       # Save the best model
       if average_reward > best_average_reward:
         # Save the model
         best_average_reward = average_reward 
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2C"        
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-Best.ckpt")
       
       ##### Optimization #####
 

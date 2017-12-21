@@ -133,7 +133,6 @@ class Agent:
     # Keeping track of the best averge reward
     best_max_reward = -np.inf
     count = 0
-    env_name = "Hopper"
     flag1 = True
     flag25 = True
     flag50 = True
@@ -163,23 +162,19 @@ class Agent:
       self.policy_network.update_std_dev()
 
       if flag1 and total_timesteps > 10000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-10k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-10k.ckpt")
         flag1 = False
 
       if flag25 and total_timesteps > 250000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-250k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-250k.ckpt")
         flag25 = False
 
       if flag50 and total_timesteps > 500000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-500k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-500k.ckpt")
         flag50 = False
 
       if flag75 and total_timesteps > 750000:
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S-750k"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-750k.ckpt")
         flag75 = False
 
       print(self.policy_network.std_dev)
@@ -198,8 +193,7 @@ class Agent:
         self.policy_network.backup()
         # Save the model
         best_max_reward = max_reward 
-        save_dir = "/home/user/workspace/agents/"+env_name+"BestA2S"    
-        saver.save(self.sess, save_dir)
+        saver.save(self.sess, save_dir+"/"+"A2C-Best.ckpt")
 
       if (max_reward < best_max_reward) and (1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.65):
       # if max_reward < best_max_reward:

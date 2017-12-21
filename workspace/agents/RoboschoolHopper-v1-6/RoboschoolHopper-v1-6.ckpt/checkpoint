@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/user/workspace/agents/RoboschoolHopper-v1-6/RoboschoolHopper-v1-6.ckpt/A2S-Best"
+all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-6/RoboschoolHopper-v1-6.ckpt/A2S-Best"

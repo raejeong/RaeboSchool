@@ -31,7 +31,7 @@ def train(agent_class, id, env_name, seed, record, data_collection_params, train
             os.mkdir(save_dir)
         except:
             pass
-        agent.train(saver=saver, save_dir=save_dir+"/"+env_name+id+".ckpt")
+        agent.train(saver=saver, save_dir=save_dir)
         env.close()
 
 def test(agent_class, id, env_name, seed, record, data_collection_params, training_params, network_params, algorithm_params, logs_path):
@@ -44,7 +44,7 @@ def test(agent_class, id, env_name, seed, record, data_collection_params, traini
     with tf.Session() as sess:
         agent = agent_class.Agent(env, sess, data_collection_params, training_params, network_params, algorithm_params, logs_path)
         saver = tf.train.Saver()
-        saver.restore(sess, save_dir+"/"+env_name+id+".ckpt")
+        saver.restore(sess, save_dir+"/"+"A2C-10k.ckpt")
         episode_reward = []
         for i in range(5):
             print("Episode " + str(i))
