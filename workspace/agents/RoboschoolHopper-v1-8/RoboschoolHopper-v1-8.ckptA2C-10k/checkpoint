@@ -1,3 +1,0 @@
-model_checkpoint_path: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2C-10k/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-Best/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2C-10k/"

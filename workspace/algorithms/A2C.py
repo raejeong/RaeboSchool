@@ -317,6 +317,9 @@ class Agent:
     summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
     return [summaries, stats]
 
+  def restore_networks(self):
+    pass
+
   # Print stats
   def print_stats(self, total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size):
     ##### Reporting Performance #####

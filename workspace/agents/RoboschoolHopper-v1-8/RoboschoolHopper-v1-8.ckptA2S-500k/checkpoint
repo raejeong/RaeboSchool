@@ -1,5 +1,0 @@
-model_checkpoint_path: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-500k/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-10k/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-250k/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-Best/"
-all_model_checkpoint_paths: "/home/user/workspace/agents/RoboschoolHopper-v1-8/RoboschoolHopper-v1-8.ckptA2S-500k/"

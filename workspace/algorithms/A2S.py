@@ -156,25 +156,25 @@ class Agent:
       # learning_rate = self.algorithm_params['learning_rate']
 
       # Average undiscounted return for the last data collection
-      average_reward = np.mean(undiscounted_returns)
-      max_reward = np.max(undiscounted_returns)
+      average_reward = np.mean(undiscounted_returns)+100
+      max_reward = np.max(undiscounted_returns)+100
 
       self.policy_network.update_std_dev()
 
       if flag1 and total_timesteps > 10000:
-        saver.save(self.sess, save_dir+"/"+"A2C-10k.ckpt")
+        saver.save(self.sess, save_dir+"/"+"A2S-10k.ckpt")
         flag1 = False
 
       if flag25 and total_timesteps > 250000:
-        saver.save(self.sess, save_dir+"/"+"A2C-250k.ckpt")
+        saver.save(self.sess, save_dir+"/"+"A2S-250k.ckpt")
         flag25 = False
 
       if flag50 and total_timesteps > 500000:
-        saver.save(self.sess, save_dir+"/"+"A2C-500k.ckpt")
+        saver.save(self.sess, save_dir+"/"+"A2S-500k.ckpt")
         flag50 = False
 
       if flag75 and total_timesteps > 750000:
-        saver.save(self.sess, save_dir+"/"+"A2C-750k.ckpt")
+        saver.save(self.sess, save_dir+"/"+"A2S-750k.ckpt")
         flag75 = False
 
       print(self.policy_network.std_dev)
@@ -193,7 +193,7 @@ class Agent:
         self.policy_network.backup()
         # Save the model
         best_max_reward = max_reward 
-        saver.save(self.sess, save_dir+"/"+"A2C-Best.ckpt")
+        saver.save(self.sess, save_dir+"/"+"A2S-Best.ckpt")
 
       if (max_reward < best_max_reward) and (1-(abs(max_reward- best_max_reward)/(abs(best_max_reward)+abs(max_reward)))<np.random.random()-0.65):
       # if max_reward < best_max_reward:
@@ -457,6 +457,11 @@ class Agent:
   def train_policy_network(self, observations_batch, actions_batch, advantages_batch, learning_rate):
     summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
     return [summaries, stats]
+
+  def restore_networks(self):
+    self.q_network.restore()
+    self.value_network.restore()
+    self.policy_network.restore()
 
   # Print stats
   def print_stats(self, total_timesteps, total_episodes, best_max_reward, max_reward, kl, policy_network_loss, value_network_loss, q_network_loss, average_advantage, learning_rate, batch_size):
