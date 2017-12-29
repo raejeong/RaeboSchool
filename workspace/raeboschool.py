@@ -44,7 +44,7 @@ def test(agent_class, id, env_name, seed, record, data_collection_params, traini
     with tf.Session() as sess:
         agent = agent_class.Agent(env, sess, data_collection_params, training_params, network_params, algorithm_params, logs_path)
         saver = tf.train.Saver()
-        saver.restore(sess, save_dir+"/"+"A2S-Best.ckpt")
+        saver.restore(sess, save_dir+"/"+"A2S-10k.ckpt")
         agent.restore_networks()
         episode_reward = []
         for i in range(10):
