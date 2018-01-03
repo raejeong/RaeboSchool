@@ -16,15 +16,18 @@ def lrelu(x, leak=0.2):
     return f1 * x + f2 * abs(x)
 
 def get_network_param(network_size):
-	network_param = None
+    network_param = None
 
-	if network_size=='small':
-		network_param = [32]
+    if network_size=='small':
+        network_param = [32]
 
-	elif network_size=='medium':
-		network_param = [64, 64]
+    elif network_size=='medium':
+        network_param = [64, 64]
 
-	elif network_size=='large':
-		network_param = [128, 64]
+    elif network_size=='large':
+        network_param = [128, 64]
 
-	return network_param
+    elif network_size=='xlarge':
+        network_param = [256, 128]
+
+    return network_param

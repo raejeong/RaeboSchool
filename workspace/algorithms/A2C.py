@@ -111,6 +111,10 @@ class Agent:
     
     # Keeping track of the best averge reward
     best_average_reward = -np.inf
+    flag1 = True
+    flag25 = True
+    flag50 = True
+    flag75 = True
 
     ##### Training #####
     
@@ -130,16 +134,31 @@ class Agent:
 
       # Average undiscounted return for the last data collection
       average_reward = np.mean(undiscounted_returns)
-      
+
+      if flag1 and total_timesteps > 10000:
+        saver.save(self.sess, save_dir+"/"+"A2C-10k.ckpt")
+        flag1 = False
+
+      if flag25 and total_timesteps > 250000:
+        saver.save(self.sess, save_dir+"/"+"A2C-250k.ckpt")
+        flag25 = False
+
+      if flag50 and total_timesteps > 500000:
+        saver.save(self.sess, save_dir+"/"+"A2C-500k.ckpt")
+        flag50 = False
+
+      if flag75 and total_timesteps > 750000:
+        saver.save(self.sess, save_dir+"/"+"A2C-750k.ckpt")
+        flag75 = False
       # Save the best model
       if average_reward > best_average_reward:
         # Save the model
-        best_average_reward = average_reward     
-        saver.save(self.sess, save_dir)
+        best_average_reward = average_reward 
+        saver.save(self.sess, save_dir+"/"+"A2C-Best.ckpt")
       
       ##### Optimization #####
 
-      value_summaries, value_stats =self.train_value_network(observations_batch, returns_batch, learning_rate)
+      value_summaries, value_stats =self.train_value_network(batch_size, observations_batch, returns_batch, learning_rate)
       value_network_loss = value_stats['value_network_loss']
       self.add_summaries(value_summaries, total_timesteps)
 
@@ -289,14 +308,17 @@ class Agent:
       self.writer.add_summary(summary, timestep)
 
   # Train value network
-  def train_value_network(self, observations_batch, returns_batch, learning_rate):
-    summaries, stats = self.value_network.train(observations_batch, returns_batch, learning_rate)
+  def train_value_network(self, batch_size, observations_batch, returns_batch, learning_rate):
+    summaries, stats = self.value_network.train_once(batch_size, observations_batch, returns_batch, learning_rate)
     return [summaries, stats]
 
   # Train policy network
   def train_policy_network(self, observations_batch, actions_batch, advantages_batch, learning_rate):
     summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
     return [summaries, stats]
+
+  def restore_networks(self):
+    pass
 
   # Print stats
   def print_stats(self, total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size):
