@@ -28,6 +28,6 @@ def get_network_param(network_size):
         network_param = [128, 64]
 
     elif network_size=='xlarge':
-        network_param = [128, 128]
+        network_param = [256, 128]
 
     return network_param
