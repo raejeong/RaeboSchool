@@ -39,6 +39,7 @@ class PolicyNetwork:
 
     # Tensorflow Session
     self.sess = sess
+    self.dtype = tf.float64
     
     # OpenAI Environment
     self.env = env
@@ -60,18 +61,18 @@ class PolicyNetwork:
     ##### Placeholders #####
 
     # placeholder for learning rate for the optimizer
-    self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
+    self.learning_rate = tf.placeholder(self.dtype, name="learning_rate")
 
-    self.std_dev_ph = tf.placeholder(tf.float32, name="std_dev")
+    self.std_dev_ph = tf.placeholder(self.dtype, name="std_dev")
     
     # Placeholder for observations
-    self.observations = tf.placeholder(tf.float32, shape=[None, self.observation_shape], name="observations")
+    self.observations = tf.placeholder(self.dtype, shape=[None, self.observation_shape], name="observations")
     
     # Placeholder for actions taken, this is used for the policy gradient
-    self.actions = tf.placeholder(tf.float32, shape=[None, self.action_shape], name="actions")
+    self.actions = tf.placeholder(self.dtype, shape=[None, self.action_shape], name="actions")
             
     # Placeholder for the advantage function
-    self.advantages = tf.placeholder(tf.float32, shape=[None, 1], name="advantages") 
+    self.advantages = tf.placeholder(self.dtype, shape=[None, 1], name="advantages") 
 
     self.average_advantage = tf.reduce_mean(self.advantages)
     
@@ -84,19 +85,19 @@ class PolicyNetwork:
       policy_output_shape = self.state_shape + self.action_shape**2 + self.state_shape*self.action_shape + self.state_shape**2
 
     # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be target_updated from the back up policy. 
-    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "current_policy_network", self.network_params['network_size'])
+    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "current_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_policy_network')
 
     # Backup of the target policy network so far, backs up the target policy in case the update is bad. outputs the mean for the action
-    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "target_policy_network", self.network_params['network_size'])
+    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "target_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.target_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_policy_network')
 
     # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
-    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "last_policy_network", self.network_params['network_size'])
+    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "last_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
     # Policy network with best average reward, used for KL divergence calculation, outputs the mean for the action
-    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "best_policy_network", self.network_params['network_size'])
+    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "best_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='best_policy_network')
 
 
@@ -162,8 +163,11 @@ class PolicyNetwork:
     # Optimizers for the network
     self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
+    self.grads, self.vars = zip(*self.policy_network_optimizer.compute_gradients(self.policy_network_loss))
+    self.grads, _ = tf.clip_by_global_norm(self.grads, 1.0)
+    self.train_policy_network = self.policy_network_optimizer.apply_gradients(zip(self.grads,self.vars))
     # Training operation for the network
-    self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
+    # self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
     
     ##### Target Update #####
     
@@ -207,7 +211,9 @@ class PolicyNetwork:
 
   # CtrlNet
   def ctrlnet(self, sys_vec, state_vec, output_size, state_size, action_size):
-    dense = tf.layers.dense(inputs=model_vec, units=output_size)
+    small_number = 0.0000001
+    t = self.dtype
+    dense = tf.layers.dense(inputs=sys_vec, units=output_size)
     dense = dense/tf.reduce_mean(dense)
     matrixTransformA = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
     idx = state_size*state_size
@@ -243,6 +249,7 @@ class PolicyNetwork:
     matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
     matrixP = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
     matrixK = tf.matmul(tf.matmul(tf.matrix_inverse(matrixR),matrixB,transpose_b=True),matrixP)
+    state_vec = tf.expand_dims(state_vec,axis=2)
     u = tf.matmul(matrixK,state_vec)
 
     return [matrixA, matrixB, u]

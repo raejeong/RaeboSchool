@@ -2,12 +2,12 @@ import numpy as np
 import tensorflow as tf
 import itertools
 
-def dense(x, shape, name, initializer=tf.random_uniform_initializer(-1.0,1.0)):
+def dense(x, shape, name, initializer=tf.random_uniform_initializer(-1.0,1.0), dtype=tf.float32):
     """
     Dense (fully connected) layer
     """
-    w = tf.get_variable(name + "/w", [x.get_shape()[1], shape], initializer=initializer)
-    b = tf.get_variable(name + "/b", [shape], initializer=tf.zeros_initializer())
+    w = tf.get_variable(name + "/w", [x.get_shape()[1], shape], initializer=initializer, dtype=dtype)
+    b = tf.get_variable(name + "/b", [shape], initializer=tf.zeros_initializer(), dtype=dtype)
     return tf.matmul(x, w) + b
 
 def lrelu(x, leak=0.2):
