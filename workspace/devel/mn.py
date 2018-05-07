@@ -150,7 +150,7 @@ def main(unused_argv):
       x={"x": eval_data},
       num_epochs=1,
       shuffle=False)
-  eval_results = mnist_classifier.predict(input_fn=eval_input_fn)
+  eval_results = list(mnist_classifier.predict(input_fn=eval_input_fn))
   import pdb
   pdb.set_trace()
 
