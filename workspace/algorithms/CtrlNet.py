@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf 
 import importlib
 from algorithms.utils.utils import *
-from algorithms.utils.PolicyNetwork import PolicyNetwork
+from algorithms.utils.CtrlPolicyNetwork import PolicyNetwork
 from algorithms.utils.ValueNetwork import ValueNetwork
 
 import itertools
