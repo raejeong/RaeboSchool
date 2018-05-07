@@ -15,7 +15,7 @@ import time
 def getInputArgs():
     parser = argparse.ArgumentParser('Learning Continous Control for OpenAI Roboschool')
     parser.add_argument('--phase', dest='phase', default='train', type=str, help='train or test')
-    parser.add_argument('--algorithm', dest='algorithm', default='A2S', type=str, help='algorithm name')
+    parser.add_argument('--algorithm', dest='algorithm', default='A2C', type=str, help='algorithm name')
     args = parser.parse_args()
     return args
 
@@ -27,7 +27,7 @@ def train(agent_class, id, env_name, seed, record, data_collection_params, train
     with tf.Session() as sess:
         agent = agent_class.Agent(env, sess, data_collection_params, training_params, network_params, algorithm_params, logs_path)
         saver = tf.train.Saver()
-        save_dir = "/home/user/workspace/agents/"+env_name+id
+        save_dir = "/home/rae/RaeboSchool/workspace/agents/"+env_name+id
         try:
             os.mkdir(save_dir)
         except:
@@ -37,8 +37,8 @@ def train(agent_class, id, env_name, seed, record, data_collection_params, train
 
 def test(agent_class, id, env_name, seed, record, data_collection_params, training_params, network_params, algorithm_params, logs_path):
     env = gym.make(env_name)
-    save_dir = "/home/user/workspace/agents/"+env_name+id
-    video_dir = "/home/user/workspace/videos/"+env_name+id
+    save_dir = "/home/rae/RaeboSchool/workspace/agents/"+env_name+id
+    video_dir = "/home/rae/RaeboSchool/workspace/videos/"+env_name+id
     if record:
         env = gym.wrappers.Monitor(env,video_dir,force=True,video_callable=lambda episode_id: True)
     with tf.Session() as sess:

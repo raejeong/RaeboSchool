@@ -1,0 +1,3 @@
+model_checkpoint_path: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-8/A2C-Best.ckpt"
+all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-8/A2C-10k.ckpt"
+all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-8/A2C-Best.ckpt"
