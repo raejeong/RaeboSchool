@@ -7,11 +7,12 @@ D = np.diag(network_out[3:5])
 F = np.array([network_out[5:7],network_out[7:9]])
 Q_ = np.array([network_out[9:11],network_out[11:13]])
 R_ = np.array([network_out[13:15],network_out[15:17]])
+A_ = np.dot(np.dot(A_,D),np.linalg.inv(A_))
 
-A = np.dot(np.dot(A_,D),np.linalg.inv(A_))
+A = np.dot(A_.T,A_)
 B = np.dot(A_,F)
-Q = np.dot(Q_.T,Q_)
 R = np.dot(R_.T,R_)
+Q = np.dot(np.dot(B,np.linalg.inv(R)),B.T).T
 
 def lqr(A,B,Q,R):
     """Solve the continuous time lqr controller.
@@ -43,8 +44,10 @@ H2=np.concatenate((H21,H22),axis=1)
 H = np.concatenate((H1,H2))
 eigVals, eigVecs = np.linalg.eig(H)
 V = eigVecs[:,np.where(eigVals<0)[0]]
-V1 = V[0:2][0:2]
-V2 = V[2:4][0:2]
+print(eigVals)
+print(eigVecs)
+V1 = V[0:2]
+V2 = V[2:4]
 P_ = np.dot(V2,np.linalg.inv(V1))
 K_ = np.dot(np.dot(np.linalg.inv(R),B.T),P_)
 
