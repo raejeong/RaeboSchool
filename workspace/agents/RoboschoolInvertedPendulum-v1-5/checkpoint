@@ -1,6 +1,6 @@
-model_checkpoint_path: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-Best.ckpt"
+model_checkpoint_path: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-750k.ckpt"
 all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-10k.ckpt"
+all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-Best.ckpt"
 all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-250k.ckpt"
 all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-500k.ckpt"
 all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-750k.ckpt"
-all_model_checkpoint_paths: "/home/rae/RaeboSchool/workspace/agents/RoboschoolInvertedPendulum-v1-5/A2C-Best.ckpt"

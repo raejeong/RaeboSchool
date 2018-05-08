@@ -82,22 +82,22 @@ class PolicyNetwork:
     if self.algorithm_params['std_dev'][0] == 'network':
       policy_output_shape = self.action_shape*2
     else:
-      policy_output_shape = self.state_shape + self.action_shape**2 + self.state_shape*self.action_shape + self.state_shape**2
+      policy_output_shape = self.state_shape + self.state_shape*self.action_shape + self.state_shape**2 + self.action_shape**2
 
     # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be target_updated from the back up policy. 
-    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "current_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.state_shape*self.action_shape, "current_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_policy_network')
 
     # Backup of the target policy network so far, backs up the target policy in case the update is bad. outputs the mean for the action
-    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "target_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.state_shape*self.action_shape, "target_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.target_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_policy_network')
 
     # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
-    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "last_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.state_shape*self.action_shape, "last_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
     # Policy network with best average reward, used for KL divergence calculation, outputs the mean for the action
-    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape, "best_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.state_shape*self.action_shape, "best_policy_network", self.network_params['network_size'], dtype=self.dtype)
     self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='best_policy_network')
 
 
@@ -163,11 +163,11 @@ class PolicyNetwork:
     # Optimizers for the network
     self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
-    self.grads, self.vars = zip(*self.policy_network_optimizer.compute_gradients(self.policy_network_loss))
-    self.grads, _ = tf.clip_by_global_norm(self.grads, 1.0)
-    self.train_policy_network = self.policy_network_optimizer.apply_gradients(zip(self.grads,self.vars))
+    # self.grads, self.vars = zip(*self.policy_network_optimizer.compute_gradients(self.policy_network_loss))
+    # self.grads, _ = tf.clip_by_global_norm(self.grads, 1.0)
+    # self.train_policy_network = self.policy_network_optimizer.apply_gradients(zip(self.grads,self.vars))
     # Training operation for the network
-    # self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
+    self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
     
     ##### Target Update #####
     
@@ -210,8 +210,10 @@ class PolicyNetwork:
     # self.sess.run(tf.global_variables_initializer())
 
   # CtrlNet
-  def ctrlnet(self, sys_vec, state_vec, output_size, state_size, action_size):
+  def ctrlnet(self, sys_vec, state_K_vec, output_size, state_size, action_size):
     small_number = 0.0000001
+    state_vec = state_K_vec[:,:state_size]
+    K_vec = tf.reshape(state_K_vec[:,state_size:],[-1,action_size,state_size])
     t = self.dtype
     dense = tf.layers.dense(inputs=sys_vec, units=output_size)
     dense = dense/tf.reduce_mean(dense)
@@ -221,14 +223,14 @@ class PolicyNetwork:
     idx += state_size
     matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])/(state_size*action_size)
     idx += state_size*action_size
-    matrixGramR = tf.reshape(dense[:,idx:],[-1,action_size,action_size])/(state_size*action_size)
+    matrixGramR = tf.reshape(dense[:,idx:],[-1,action_size,action_size])
     matrixGramA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))/(state_size**2)
     matrixAU = tf.matrix_band_part(tf.matmul(matrixGramA,matrixGramA,transpose_a=True)/(state_size**2),0,-1)
     matrixB = tf.matmul(matrixTransformA,matrixF)
-    matrixRU = tf.matrix_band_part(tf.matmul(matrixGramR,matrixGramR,transpose_a=True),0,-1)
+    matrixRU = tf.matrix_band_part(tf.matmul(matrixGramR,matrixGramR,transpose_a=True),0,-1)*(state_size*action_size)
     matrixA = 0.5*(matrixAU + tf.transpose(matrixAU,perm=[0,2,1]))
-    matrixR = 0.5*(matrixRU + tf.transpose(matrixRU,perm=[0,2,1]))
-    matrixQU = tf.matrix_band_part(tf.transpose(tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixR)),matrixB,transpose_b=True),perm=[0,2,1]),0,-1)
+    matrixRinv = 0.5*(matrixRU + tf.transpose(matrixRU,perm=[0,2,1]))/100.0
+    matrixQU = tf.matrix_band_part(tf.transpose(tf.matmul(tf.matmul(matrixB,matrixRinv),matrixB,transpose_b=True),perm=[0,2,1]),0,-1)
     matrixQ = 0.5*(matrixQU + tf.transpose(matrixQU,perm=[0,2,1]))
     matrixH11 = matrixA
     matrixH12 = -matrixQ
@@ -248,11 +250,58 @@ class PolicyNetwork:
     matrixV1 = tf.transpose(matrixV[:,:,:state_size],perm=[0,2,1])
     matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
     matrixP = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
-    matrixK = tf.matmul(tf.matmul(tf.matrix_inverse(matrixR),matrixB,transpose_b=True),matrixP)
+    matrixK = tf.matmul(tf.matmul(matrixRinv,matrixB,transpose_b=True),matrixP)
+    matrixK = 0.0001*matrixK/tf.reduce_mean(matrixK) + K_vec
     state_vec = tf.expand_dims(state_vec,axis=2)
     u = tf.matmul(matrixK,state_vec)
 
     return [matrixA, matrixB, u]
+
+  # def ctrlnet(self, sys_vec, state_vec, output_size, state_size, action_size):
+  #   small_number = 0.0000001
+  #   t = self.dtype
+  #   dense = tf.layers.dense(inputs=sys_vec, units=output_size)
+  #   dense = dense/tf.reduce_mean(dense)
+  #   matrixTransformA = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
+  #   idx = state_size*state_size
+  #   matrixDiagonalA = tf.matrix_diag(dense[:,idx:idx+state_size])
+  #   idx += state_size
+  #   matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])/(state_size*action_size)
+  #   idx += state_size*action_size
+  #   matrixGramQ = tf.reshape(dense[:,idx:],[-1,state_size,state_size])/(state_size*state_size)
+  #   matrixGramA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))/(state_size**2)
+  #   matrixA = tf.matmul(matrixGramA,matrixGramA,transpose_a=True)/(state_size**2)
+  #   matrixAU = tf.matrix_band_part(matrixA,0,-1)
+  #   matrixB = tf.matmul(matrixTransformA,matrixF,name="matrixB")
+  #   matrixQ = tf.matmul(matrixGramQ,matrixGramQ,transpose_a=True)/(state_size**2)
+  #   matrixQU = tf.matrix_band_part(matrixQ,0,-1)
+  #   matrixA = matrixAU + tf.transpose(matrixAU,perm=[0,2,1]) - tf.matrix_band_part(matrixA,0,0)
+  #   matrixQ = matrixQU + tf.transpose(matrixQU,perm=[0,2,1]) - tf.matrix_band_part(matrixQ,0,0)
+  #   matrixR = tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixQ),transpose_a=True),matrixB)
+  #   # matrixQ = tf.transpose(tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixR)),matrixB,transpose_b=True),perm=[0,2,1])
+  #   matrixH11 = matrixA
+  #   matrixH12 = -matrixQ
+  #   matrixH21 = -matrixQ
+  #   matrixH22 = -matrixA
+  #   matrixH1 = tf.concat((matrixH11,matrixH12),axis=2)
+  #   matrixH2 = tf.concat((matrixH21,matrixH22),axis=2)
+  #   matrixH = tf.concat((matrixH1,matrixH2),axis=1)
+  #   # matrixH = tf.where(tf.logical_and((matrixH >= 0),(matrixH<small_number)), small_number*tf.ones(tf.shape(matrixH),t), matrixH)
+  #   # matrixH = tf.where(tf.logical_and((matrixH < 0),(tf.abs(matrixH)<small_number)), -small_number*tf.ones(tf.shape(matrixH),t), matrixH)
+  #   matrixHU = tf.matrix_band_part(matrixH,0,-1)
+  #   matrixH = matrixHU + tf.transpose(matrixHU,perm=[0,2,1]) - tf.matrix_band_part(matrixH,0,0)
+  #   eigVals, eigVecs = tf.self_adjoint_eig(matrixH)
+  #   eigVecs = tf.transpose(eigVecs,perm=[0,2,1])
+  #   stableEigIdxs = tf.where(eigVals<0)
+  #   matrixV = tf.reshape(tf.gather_nd(eigVecs,stableEigIdxs),[-1,state_size,2*state_size])
+  #   matrixV1 = tf.transpose(matrixV[:,:,:state_size],perm=[0,2,1])
+  #   matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
+  #   matrixP = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
+  #   matrixK = tf.matmul(tf.matmul(tf.matrix_inverse(matrixB),matrixQ),matrixP)
+  #   state_vec = tf.expand_dims(state_vec,axis=2)
+  #   u = tf.matmul(matrixK,state_vec)[-1,self.action_shape]
+
+  #   return [matrixA, matrixB, u]
 
   # Compute suggested actions from observation
   def compute_suggested_actions(self, observation):
