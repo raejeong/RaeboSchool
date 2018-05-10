@@ -84,34 +84,31 @@ class PolicyNetwork:
     if self.algorithm_params['std_dev'][0] == 'network':
       policy_output_shape = self.action_shape*2
     else:
-      policy_output_shape = self.state_shape + self.state_shape*self.action_shape + self.state_shape**2 + self.action_shape**2
+      policy_output_shape = 2*self.state_shape + self.state_shape*self.action_shape + 2*self.state_shape**2 + self.action_shape**2
 
     # Current policy that will be updated and used to act, if the updated policy performs worse, the policy will be target_updated from the back up policy. 
-    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.action_shape, "current_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.current_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "current_policy_network", self.network_params['network_size'], dtype=self.dtype,ss=True)
     self.current_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_policy_network')
 
     # Backup of the target policy network so far, backs up the target policy in case the update is bad. outputs the mean for the action
-    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.action_shape, "target_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.target_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "target_policy_network", self.network_params['network_size'], dtype=self.dtype,ss=True)
     self.target_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_policy_network')
 
     # Policy network from last update, used for KL divergence calculation, outputs the mean for the action
-    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.action_shape, "last_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.last_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "last_policy_network", self.network_params['network_size'], dtype=self.dtype,ss=True)
     self.last_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='last_policy_network')
 
     # Policy network with best average reward, used for KL divergence calculation, outputs the mean for the action
-    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape + self.state_shape + self.action_shape, "best_policy_network", self.network_params['network_size'], dtype=self.dtype)
+    self.best_policy_network = self.policy_network_class.Network(self.sess, self.observations, policy_output_shape, "best_policy_network", self.network_params['network_size'], dtype=self.dtype,ss=True)
     self.best_policy_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='best_policy_network')
 
 
     ##### LQR ######
 
-    self.current_policy_network_A, self.current_policy_network_B, self.current_policy_network_u, self.current_policy_network_K = self.ctrlnet(self.current_policy_network.out[:,:policy_output_shape], self.current_policy_network.out[:,policy_output_shape:],policy_output_shape,self.state_shape,self.action_shape)
-    self.target_policy_network_A, self.target_policy_network_B, self.target_policy_network_u, self.target_policy_network_K = self.ctrlnet(self.target_policy_network.out[:,:policy_output_shape], self.target_policy_network.out[:,policy_output_shape:],policy_output_shape,self.state_shape,self.action_shape)
-    self.last_policy_network_A, self.last_policy_network_B, self.last_policy_network_u, self.last_policy_network_K = self.ctrlnet(self.last_policy_network.out[:,:policy_output_shape], self.last_policy_network.out[:,policy_output_shape:],policy_output_shape,self.state_shape,self.action_shape)
-    self.best_policy_network_A, self.best_policy_network_B, self.best_policy_network_u, self.best_policy_network_K = self.ctrlnet(self.best_policy_network.out[:,:policy_output_shape], self.best_policy_network.out[:,policy_output_shape:],policy_output_shape,self.state_shape,self.action_shape)
-
-    
-
+    self.current_policy_network_A, self.current_policy_network_B, self.current_policy_network_u, self.current_policy_network_delta_state = self.ctrlnet(self.current_policy_network.out,self.state_shape,self.action_shape,self.observations)
+    self.target_policy_network_A, self.target_policy_network_B, self.target_policy_network_u, _ = self.ctrlnet(self.target_policy_network.out,self.state_shape,self.action_shape,self.observations)
+    self.last_policy_network_A, self.last_policy_network_B, self.last_policy_network_u, _ = self.ctrlnet(self.last_policy_network.out,self.state_shape,self.action_shape,self.observations)
+    self.best_policy_network_A, self.best_policy_network_B, self.best_policy_network_u, _ = self.ctrlnet(self.best_policy_network.out,self.state_shape,self.action_shape,self.observations)
 
     ##### Policy Action Probability #####
       
@@ -162,33 +159,26 @@ class PolicyNetwork:
     self.policy_network_loss = tf.reduce_mean(self.policy_network_losses) #- tf.reduce_mean(self.current_gaussian_policy_distribution.entropy())
     self.summary = tf.summary.scalar('policy_network_loss', self.policy_network_loss)
 
-    self.current_state = tf.expand_dims(self.current_policy_network.out[0:-1,policy_output_shape:policy_output_shape+self.state_shape],axis=2)
-    self.next_state = tf.expand_dims(self.current_policy_network.out[1:,policy_output_shape:policy_output_shape+self.state_shape],axis=2)
-    self.Ax = tf.matmul(self.current_policy_network_A[0:-1],self.current_state)
-    self.Bu = tf.matmul(self.current_policy_network_B[0:-1],tf.expand_dims(self.actions[0:-1],axis=2))
-    self.ss_loss = 1e-5*tf.cast(tf.reduce_mean(tf.abs((self.next_state-self.current_state)-(self.Ax+self.Bu))),self.dtype)
-    self.v_loss = 1e-3*tf.cast(tf.losses.huber_loss(self.returns-self.advantages-2000.0,tf.expand_dims(tf.reduce_mean(self.current_policy_network.out[:,policy_output_shape:policy_output_shape+self.state_shape],axis=1),axis=1)),self.dtype)
-    self.a_loss = tf.squared_difference(tf.cast(100.0,self.dtype), tf.abs(tf.reduce_mean(self.current_policy_network_A)))
-    self.b_loss = tf.squared_difference(tf.cast(100.0,self.dtype), tf.abs(tf.reduce_mean(self.current_policy_network_B)))
-    self.ab_loss = self.a_loss + self.b_loss
+    # self.current_state = tf.expand_dims(self.current_policy_network.out[0:-1,policy_output_shape:policy_output_shape+self.state_shape],axis=2)
+    # self.next_state = tf.expand_dims(self.current_policy_network.out[1:,policy_output_shape:policy_output_shape+self.state_shape],axis=2)
+    # self.Ax = tf.matmul(self.current_policy_network_A[0:-1],self.current_state)
+    # self.Bu = tf.matmul(self.current_policy_network_B[0:-1],tf.expand_dims(self.actions[0:-1],axis=2))
+    # self.ss_loss = 1e-5*tf.cast(tf.reduce_mean(tf.abs((self.next_state-self.current_state)-(self.Ax+self.Bu))),self.dtype)
 
-    self.summaryKlqr = tf.summary.scalar('ss_loss', self.ss_loss)
-    self.summaryKvec = tf.summary.scalar('v_loss', self.v_loss)
+    # self.summaryKlqr = tf.summary.scalar('ss_loss', self.ss_loss)
 
     ##### Optimization #####
     
     # Optimizers for the network
     self.policy_network_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-    self.policy_ss_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-    self.policy_v_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+    # self.policy_ss_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+    # self.policy_v_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
     
-    self.grads, self.vars = zip(*self.policy_network_optimizer.compute_gradients(1e2*self.policy_network_loss+self.ss_loss+self.v_loss))
-    self.grads, _ = tf.clip_by_global_norm(self.grads, 2.0)
+    self.grads, self.vars = zip(*self.policy_network_optimizer.compute_gradients(self.policy_network_loss))
+    self.grads, _ = tf.clip_by_global_norm(self.grads, 1.0)
     self.train_policy_network = self.policy_network_optimizer.apply_gradients(zip(self.grads,self.vars))
     # Training operation for the network
-    # self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss+0.0001*self.ss_loss+0.0001*self.v_loss)
-    # self.train_ss_network = self.policy_network_optimizer.minimize(self.ss_loss)
-    # self.train_v_network = self.policy_network_optimizer.minimize(self.v_loss)
+    # self.train_policy_network = self.policy_network_optimizer.minimize(self.policy_network_loss)
     
     ##### Target Update #####
     
@@ -231,100 +221,54 @@ class PolicyNetwork:
     # self.sess.run(tf.global_variables_initializer())
 
   # CtrlNet
-  def ctrlnet(self, sys_vec, state_K_vec, output_size, state_size, action_size):
-    small_number = 0.0000001
-    state_vec = state_K_vec[:,:state_size]
-    u_vec = tf.reshape(state_K_vec[:,state_size:],[-1,action_size])
+  def ctrlnet(self, dense, state_size, action_size, state, alpha=1e1, beta=1e1):
     t = self.dtype
-    dense = tf.layers.dense(inputs=sys_vec, units=output_size)
-    dense = dense/tf.reduce_mean(dense)
-    matrixTransformA = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
+    horizon = 0
+    small_number = 1e-7
+    dense = tf.where(tf.logical_and((dense >= 0),(dense<small_number)), small_number*tf.ones(tf.shape(dense),t), dense)
+    dense = tf.where(tf.logical_and((dense < 0),(tf.abs(dense)<small_number)), -small_number*tf.ones(tf.shape(dense),t), dense)
+    matrixTransformAU = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
+    matrixTransformA = tf.matmul(matrixTransformAU,matrixTransformAU,transpose_a=True)*state_size**2
     idx = state_size*state_size
     matrixDiagonalA = tf.matrix_diag(dense[:,idx:idx+state_size])
     idx += state_size
-    matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])/(state_size*action_size)
+    matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])*(state_size*action_size)
     idx += state_size*action_size
-    matrixGramR = tf.reshape(dense[:,idx:],[-1,action_size,action_size])
-    matrixGramA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))/(state_size**2)
-    matrixAU = tf.matrix_band_part(tf.matmul(matrixGramA,matrixGramA,transpose_a=True)/(state_size**2),0,-1)
-    matrixB = tf.matmul(matrixTransformA,matrixF)
-    matrixRU = tf.matrix_band_part(tf.matmul(matrixGramR,matrixGramR,transpose_a=True),0,-1)*(state_size*action_size)
-    matrixA = 0.5*(matrixAU + tf.transpose(matrixAU,perm=[0,2,1]))
-    matrixRinv = 0.5*(matrixRU + tf.transpose(matrixRU,perm=[0,2,1]))/100.0
-    matrixQU = tf.matrix_band_part(tf.transpose(tf.matmul(tf.matmul(matrixB,matrixRinv),matrixB,transpose_b=True),perm=[0,2,1]),0,-1)
-    matrixQ = 0.5*(matrixQU + tf.transpose(matrixQU,perm=[0,2,1]))
-    matrixH11 = matrixA
-    matrixH12 = -matrixQ
-    matrixH21 = -matrixQ
-    matrixH22 = -tf.transpose(matrixA,perm=[0,2,1])
-    matrixH1 = tf.concat((matrixH11,matrixH12),axis=2)
-    matrixH2 = tf.concat((matrixH21,matrixH22),axis=2)
-    matrixH = tf.concat((matrixH1,matrixH2),axis=1)
-    matrixH = tf.where(tf.logical_and((matrixH >= 0),(matrixH<small_number)), small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-    matrixH = tf.where(tf.logical_and((matrixH < 0),(tf.abs(matrixH)<small_number)), -small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-    matrixHU = tf.matrix_band_part(matrixH,0,-1)
-    matrixH = 0.5*(matrixHU + tf.transpose(matrixHU,perm=[0,2,1]))/tf.reduce_mean(matrixH)
-    eigVals, eigVecs = tf.self_adjoint_eig(matrixH)
-    eigVecs = tf.transpose(eigVecs,perm=[0,2,1])
-    stableEigIdxs = tf.where(eigVals<0)
-    matrixV = tf.reshape(tf.gather_nd(eigVecs,stableEigIdxs),[-1,state_size,2*state_size])
-    matrixV1 = tf.transpose(matrixV[:,:,:state_size],perm=[0,2,1])
-    matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
-    matrixP = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
-    matrixKlqr = tf.matmul(tf.matmul(matrixRinv,matrixB,transpose_b=True),matrixP)
-    matrixKlqr = matrixKlqr/tf.reduce_mean(matrixKlqr) 
-    matrixK = matrixKlqr
-    state_vec = tf.expand_dims(state_vec,axis=2)
-    u = 0.00001*tf.matmul(matrixK,state_vec) 
-    # u = 0.0000001*tf.matmul(matrixK,state_vec) + tf.expand_dims(u_vec,axis=2)
+    matrixGramQU = tf.matrix_band_part(tf.reshape(dense[:,idx:idx+state_size*state_size],[-1,state_size,state_size]),0,-1)
+    idx += state_size*state_size
+    matrixGramRU = tf.matrix_band_part(tf.reshape(dense[:,idx:idx+action_size*action_size],[-1,action_size,action_size]),0,-1)
+    idx += action_size*action_size
+    stateOpPt = tf.reshape(dense[:,idx:],[-1,state_size,1])
 
-    return [matrixA, matrixB, u, (matrixKlqr, u_vec)]
+    matrixA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))
+    matrixB = tf.matmul(matrixTransformA,matrixF,name="matrixB")
+    matrixQ = alpha*tf.matmul(matrixGramQU,matrixGramQU,transpose_a=True)
+    matrixR = beta*tf.matmul(matrixGramRU,matrixGramRU,transpose_a=True)
+    matrixP = tf.eye(state_size,dtype=t) + tf.zeros_like(matrixA)
 
-  # def ctrlnet(self, sys_vec, state_vec, output_size, state_size, action_size):
-  #   small_number = 0.0000001
-  #   t = self.dtype
-  #   dense = tf.layers.dense(inputs=sys_vec, units=output_size)
-  #   dense = dense/tf.reduce_mean(dense)
-  #   matrixTransformA = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
-  #   idx = state_size*state_size
-  #   matrixDiagonalA = tf.matrix_diag(dense[:,idx:idx+state_size])
-  #   idx += state_size
-  #   matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])/(state_size*action_size)
-  #   idx += state_size*action_size
-  #   matrixGramQ = tf.reshape(dense[:,idx:],[-1,state_size,state_size])/(state_size*state_size)
-  #   matrixGramA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))/(state_size**2)
-  #   matrixA = tf.matmul(matrixGramA,matrixGramA,transpose_a=True)/(state_size**2)
-  #   matrixAU = tf.matrix_band_part(matrixA,0,-1)
-  #   matrixB = tf.matmul(matrixTransformA,matrixF,name="matrixB")
-  #   matrixQ = tf.matmul(matrixGramQ,matrixGramQ,transpose_a=True)/(state_size**2)
-  #   matrixQU = tf.matrix_band_part(matrixQ,0,-1)
-  #   matrixA = matrixAU + tf.transpose(matrixAU,perm=[0,2,1]) - tf.matrix_band_part(matrixA,0,0)
-  #   matrixQ = matrixQU + tf.transpose(matrixQU,perm=[0,2,1]) - tf.matrix_band_part(matrixQ,0,0)
-  #   matrixR = tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixQ),transpose_a=True),matrixB)
-  #   # matrixQ = tf.transpose(tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixR)),matrixB,transpose_b=True),perm=[0,2,1])
-  #   matrixH11 = matrixA
-  #   matrixH12 = -matrixQ
-  #   matrixH21 = -matrixQ
-  #   matrixH22 = -matrixA
-  #   matrixH1 = tf.concat((matrixH11,matrixH12),axis=2)
-  #   matrixH2 = tf.concat((matrixH21,matrixH22),axis=2)
-  #   matrixH = tf.concat((matrixH1,matrixH2),axis=1)
-  #   # matrixH = tf.where(tf.logical_and((matrixH >= 0),(matrixH<small_number)), small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-  #   # matrixH = tf.where(tf.logical_and((matrixH < 0),(tf.abs(matrixH)<small_number)), -small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-  #   matrixHU = tf.matrix_band_part(matrixH,0,-1)
-  #   matrixH = matrixHU + tf.transpose(matrixHU,perm=[0,2,1]) - tf.matrix_band_part(matrixH,0,0)
-  #   eigVals, eigVecs = tf.self_adjoint_eig(matrixH)
-  #   eigVecs = tf.transpose(eigVecs,perm=[0,2,1])
-  #   stableEigIdxs = tf.where(eigVals<0)
-  #   matrixV = tf.reshape(tf.gather_nd(eigVecs,stableEigIdxs),[-1,state_size,2*state_size])
-  #   matrixV1 = tf.transpose(matrixV[:,:,:state_size],perm=[0,2,1])
-  #   matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
-  #   matrixP = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
-  #   matrixK = tf.matmul(tf.matmul(tf.matrix_inverse(matrixB),matrixQ),matrixP)
-  #   state_vec = tf.expand_dims(state_vec,axis=2)
-  #   u = tf.matmul(matrixK,state_vec)[-1,self.action_shape]
+    def trajectory_optimization(x):
+        P = matrixQ + matrixQ+tf.matmul(matrixA,x[0],transpose_a=True)@matrixA-tf.matmul(matrixA,x[0],transpose_a=True)@matrixB@tf.matrix_inverse(matrixR+tf.matmul(matrixB,x[0],transpose_a=True)@matrixB)@tf.matmul(matrixB,x[0],transpose_a=True)@matrixA
+        P = tf.reshape(P,[-1,state_size*state_size])
+        P = tf.where(tf.logical_and((P >= 0),(P<small_number)), small_number*tf.ones(tf.shape(P),t), P)
+        P = tf.where(tf.logical_and((P < 0),(tf.abs(P)<small_number)), -small_number*tf.ones(tf.shape(P),t), P)
+        P = tf.reshape(P,[-1,state_size,state_size])
+        i = x[1] + 1
+        x = (P,i)
+        return [x]
 
-  #   return [matrixA, matrixB, u]
+    def horizon_condition(x):
+        P, i = x
+        return i < horizon
+
+    x0 = (matrixP, 0)
+    matrixP0 = tf.while_loop(horizon_condition,trajectory_optimization,[x0])[0][0]  
+    matrixK = -tf.matrix_inverse(matrixR+tf.matmul(matrixB,matrixP0,transpose_a=True)@matrixB)@tf.matmul(matrixB,matrixP0,transpose_a=True)@matrixA
+    state_delta = tf.reshape(state,[-1,state_size,1]) - stateOpPt
+    u = matrixK@state_delta
+    u = tf.where(u>0, tf.pow(u,1/3.), u)
+    u = tf.where(u<0, -tf.pow(tf.abs(u),1/3.), u)
+    u = 1e-3*u
+    return [matrixA, matrixB, u, state_delta]
 
   # Compute suggested actions from observation
   def compute_suggested_actions(self, observation):
@@ -368,12 +312,14 @@ class PolicyNetwork:
     self.algorithm_params['learning_rate'] = learning_rate
     summaries = []
     stats = {}
-    # for i in range(1):
-    #   # Taking the gradient step to optimize (train) the policy network.
-    #   sstrain, vtrain = self.sess.run([self.train_ss_network,self.train_v_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate'], self.std_dev_ph:self.std_dev, self.returns:returns_batch})
+    we= self.sess.run(self.we, {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate'], self.std_dev_ph:self.std_dev, self.returns:returns_batch})
+    import pdb;pdb.set_trace()
+  
     for i in range(1):
       # Taking the gradient step to optimize (train) the policy network.
-      policy_network_losses, policy_network_loss, _, summaryKvec, summaryKlqr = self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network, self.summaryKvec, self.summaryKlqr], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate'], self.std_dev_ph:self.std_dev, self.returns:returns_batch})
+      policy_network_losses, policy_network_loss, _= self.sess.run([self.policy_network_losses, self.policy_network_loss, self.train_policy_network], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.learning_rate:self.algorithm_params['learning_rate'], self.std_dev_ph:self.std_dev, self.returns:returns_batch})
+
+    print("action: {}".format(np.mean(actions_batch,axis=0)))
 
     # Get stats
     summary, average_advantage, kl = self.sess.run([self.summary, self.average_advantage, self.kl], {self.observations:observations_batch, self.actions:actions_batch, self.advantages:advantages_batch, self.std_dev_ph:self.std_dev})
@@ -387,8 +333,6 @@ class PolicyNetwork:
     assert policy_network_losses.shape==actions_batch.shape, "Dimensions mismatch. Policy Distribution is incorrect! " + str(policy_network_losses.shape)
 
     summaries.append(summary)
-    summaries.append(summaryKvec)
-    summaries.append(summaryKlqr)
     stats['policy_network_loss'] = policy_network_loss
     stats['kl'] = kl
     stats['average_advantage'] = average_advantage
