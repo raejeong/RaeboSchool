@@ -162,10 +162,11 @@ class Agent:
       value_network_loss = value_stats['value_network_loss']
       self.add_summaries(value_summaries, total_timesteps)
 
-      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, advantages_batch, learning_rate)
+      policy_summaries, policy_stats =self.train_policy_network(observations_batch, actions_batch, returns_batch, advantages_batch, learning_rate)
       policy_network_loss = policy_stats['policy_network_loss']
       kl = policy_stats['kl']
       average_advantage = policy_stats['average_advantage']
+      self.add_summaries(policy_summaries, total_timesteps)
       
       self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size)
 
@@ -296,6 +297,8 @@ class Agent:
         self.algorithm_params['learning_rate'] /= 1.5
       elif kl < self.training_params['desired_kl'] / 2: 
         self.algorithm_params['learning_rate'] *= 1.5
+      if self.algorithm_params['learning_rate'] < 1e-3:
+        self.algorithm_params['learning_rate'] = 1e-3
       learning_rate = self.algorithm_params['learning_rate']
     else:
       learning_rate = self.algorithm_params['learning_rate']
@@ -313,8 +316,8 @@ class Agent:
     return [summaries, stats]
 
   # Train policy network
-  def train_policy_network(self, observations_batch, actions_batch, advantages_batch, learning_rate):
-    summaries, stats = self.policy_network.train(observations_batch, advantages_batch, actions_batch, learning_rate)
+  def train_policy_network(self, observations_batch, actions_batch, returns_batch, advantages_batch, learning_rate):
+    summaries, stats = self.policy_network.train(observations_batch, returns_batch, advantages_batch, actions_batch, learning_rate)
     return [summaries, stats]
 
   def restore_networks(self):

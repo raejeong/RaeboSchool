@@ -166,6 +166,7 @@ class Agent:
       policy_network_loss = policy_stats['policy_network_loss']
       kl = policy_stats['kl']
       average_advantage = policy_stats['average_advantage']
+      self.add_summaries(policy_summaries, total_timesteps)
       
       self.print_stats(total_timesteps, total_episodes, best_average_reward, average_reward, kl, policy_network_loss, value_network_loss, average_advantage, learning_rate, batch_size)
 
