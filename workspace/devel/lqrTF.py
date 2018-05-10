@@ -33,10 +33,10 @@ def main(unused_argv):
     mnist = tf.contrib.learn.datasets.load_dataset("mnist")
     train_data = mnist.train.images # Returns np.array
 
-    small_number = 0.0000001
-    state_size = 3
-    action_size = 2
-    output_size = state_size + state_size*action_size + 2*state_size**2
+    state_size = 15
+    action_size = 3
+    output_size = 2*state_size**2 + action_size**2 + action_size*state_size + 2*state_size
+    horizon = 5
 
     x = tf.placeholder(t, [None, 784])
 
@@ -60,54 +60,42 @@ def main(unused_argv):
     pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
 
     pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])
-    dense = tf.layers.dense(inputs=pool2_flat, units=output_size)
-    dense = dense/tf.reduce_mean(dense)
+    dense = tf.layers.dense(inputs=pool2_flat, units=output_size, activation=tf.nn.tanh)
 
-    matrixTransformA = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
+    matrixTransformAU = tf.matrix_band_part(tf.reshape(dense[:,:state_size*state_size],[-1,state_size,state_size]),0,-1)
+    matrixTransformA = tf.matmul(matrixTransformAU,matrixTransformAU,transpose_a=True)
     idx = state_size*state_size
-
     matrixDiagonalA = tf.matrix_diag(dense[:,idx:idx+state_size])
-
     idx += state_size
-
-    matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])/(state_size*action_size)
+    matrixF = tf.reshape(dense[:,idx:idx+state_size*action_size],[-1,state_size,action_size])
     idx += state_size*action_size
+    matrixGramQU = tf.matrix_band_part(tf.reshape(dense[:,idx:idx+state_size*state_size],[-1,state_size,state_size]),0,-1)
+    idx += state_size*state_size
+    matrixGramRU = tf.matrix_band_part(tf.reshape(dense[:,idx:idx+action_size*action_size],[-1,action_size,action_size]),0,-1)
+    idx += action_size*action_size
+    stateOpPt = tf.reshape(dense[:,idx:],[-1,state_size,1])
 
-    matrixGramQ = tf.reshape(dense[:,idx:],[-1,state_size,state_size])/(state_size*state_size)
-
-    matrixGramA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))/(state_size**2)
-
-    matrixA = tf.matmul(matrixGramA,matrixGramA,transpose_a=True)/(state_size**2)
-    matrixAU = tf.matrix_band_part(matrixA,0,-1)
+    matrixA = tf.matmul(tf.matmul(matrixTransformA,matrixDiagonalA),tf.matrix_inverse(matrixTransformA))
+    matrixA /= tf.reduce_mean(matrixA)
     matrixB = tf.matmul(matrixTransformA,matrixF,name="matrixB")
-    matrixQ = tf.matmul(matrixGramQ,matrixGramQ,transpose_a=True)/(state_size**2)
-    matrixQU = tf.matrix_band_part(matrixQ,0,-1)
+    matrixQ = tf.matmul(matrixGramQU,matrixGramQU,transpose_a=True)
+    matrixR = tf.matmul(matrixGramRU,matrixGramRU,transpose_a=True)
+    matrixP = tf.eye(state_size,dtype=t) + tf.zeros_like(matrixA)
 
-    matrixA = matrixAU + tf.transpose(matrixAU,perm=[0,2,1]) - tf.matrix_band_part(matrixA,0,0)
-    matrixQ = matrixQU + tf.transpose(matrixQU,perm=[0,2,1]) - tf.matrix_band_part(matrixQ,0,0)
-    matrixR = tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixQ),transpose_a=True),matrixB)
-    matrixQ = tf.transpose(tf.matmul(tf.matmul(matrixB,tf.matrix_inverse(matrixR)),matrixB,transpose_b=True),perm=[0,2,1])
+    def trajectory_optimization(x):
+        P = matrixQ + matrixQ+tf.matmul(matrixA,x[0],transpose_a=True)@matrixA-tf.matmul(matrixA,x[0],transpose_a=True)@matrixB@tf.matrix_inverse(matrixR+tf.matmul(matrixB,x[0],transpose_a=True)@matrixB)@tf.matmul(matrixB,x[0],transpose_a=True)@matrixA
+        i = x[1] + 1
+        x = (P,i)
+        return [x]
 
-    matrixH11 = matrixA
-    matrixH12 = -matrixQ
-    matrixH21 = -matrixQ
-    matrixH22 = -matrixA
-    matrixH1 = tf.concat((matrixH11,matrixH12),axis=2)
-    matrixH2 = tf.concat((matrixH21,matrixH22),axis=2)
-    matrixH = tf.concat((matrixH1,matrixH2),axis=1)
-    # matrixH = tf.where(tf.logical_and((matrixH >= 0),(matrixH<small_number)), small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-    # matrixH = tf.where(tf.logical_and((matrixH < 0),(tf.abs(matrixH)<small_number)), -small_number*tf.ones(tf.shape(matrixH),t), matrixH)
-    matrixHU = tf.matrix_band_part(matrixH,0,-1)
-    matrixH = matrixHU + tf.transpose(matrixHU,perm=[0,2,1]) - tf.matrix_band_part(matrixH,0,0)
+    def horizon_condition(x):
+        P, i = x
+        return i < horizon
 
-    eigVals, eigVecs = tf.self_adjoint_eig(matrixH)
-    eigVecs = tf.transpose(eigVecs,perm=[0,2,1])
-    stableEigIdxs = tf.where(eigVals<0)
-    matrixV = tf.reshape(tf.gather_nd(eigVecs,stableEigIdxs),[-1,state_size,2*state_size])
-    matrixV1 = tf.transpose(matrixV[:,:,:state_size],perm=[0,2,1])
-    matrixV2 = tf.transpose(matrixV[:,:,state_size:],perm=[0,2,1])
-    matrixP_ = tf.matmul(matrixV2,tf.matrix_inverse(matrixV1))
-    matrixK_ = tf.matmul(tf.matmul(tf.matrix_inverse(matrixR),matrixB,transpose_b=True),matrixP_)
+    x0 = (matrixP, 0)
+    matrixP0 = tf.while_loop(horizon_condition,trajectory_optimization,[x0])[0][0]  
+    matrixK = -tf.matrix_inverse(matrixR+tf.matmul(matrixB,matrixP0,transpose_a=True)@matrixB)@tf.matmul(matrixB,matrixP0,transpose_a=True)@matrixA
+    u = matrixK@stateOpPt
 
     ###################################################################################################################3
     
@@ -116,11 +104,11 @@ def main(unused_argv):
 
     batch_size = 2
 
-    # idxs, v, e, da, A,B,R,Q,H, at,ag= sess.run([stableEigIdxs, eigVecs, eigVals, matrixDiagonalA, matrixA, matrixB, matrixR, matrixQ, matrixH,matrixTransformA,matrixGramA], feed_dict={x: train_data[0:batch_size]}) 
-    # pdb.set_trace()
+    A,B,R,Q,state,P0,uout= sess.run([matrixA, matrixB, matrixR, matrixQ, stateOpPt, matrixP0,u], feed_dict={x: train_data[0:batch_size]}) 
+    pdb.set_trace()
     # idxs, v, e, da, A,B,R,Q,H,V,V1,V2= sess.run([stableEigIdxs, eigVecs, eigVals, matrixDiagonalA, matrixA, matrixB, matrixR, matrixQ, matrixH,matrixV,matrixV1,matrixV2], feed_dict={x: train_data[0:batch_size]}) 
     # # dense = sess.run([dense], feed_dict={x: train_data[0:2]}) 
-    A,B,Q,R,P_,K_,e,H,AG= sess.run([matrixA, matrixB, matrixQ, matrixR, matrixP_, matrixK_, eigVals, matrixH,matrixGramA], feed_dict={x: train_data[0:batch_size]})
+    # A,B,Q,R,P_,K_,e,H,AG= sess.run([matrixA, matrixB, matrixQ, matrixR, matrixP_, matrixK_, eigVals, matrixH,matrixGramA], feed_dict={x: train_data[0:batch_size]})
     # pdb.set_trace()
 
     P_error = []
